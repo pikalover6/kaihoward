@@ -1,20 +1,208 @@
-.counter {
-  font-size: 16px;
-  padding: 5px 10px;
-  border-radius: 5px;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 2px solid transparent;
-  transition: border-color 0.3s;
-  margin-bottom: 24px;
+/* ── Nav ── */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
 
-  &:hover {
-    border-color: var(--accent-border);
-  }
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
+nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 16px 24px;
+}
+
+.nav-name {
+  font-weight: 600;
+  color: var(--text-h);
+  font-size: 17px;
+}
+
+nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 28px;
+}
+
+nav a {
+  color: var(--text);
+  text-decoration: none;
+  font-size: 15px;
+  transition: color 0.2s;
+}
+
+nav a:hover {
+  color: var(--accent);
+}
+
+/* ── Sections ── */
+main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+section {
+  padding: 80px 0;
+}
+
+/* ── Hero ── */
+#hero {
+  min-height: 80svh;
+  display: flex;
+  align-items: center;
+}
+
+.hero-content {
+  text-align: left;
+}
+
+.hero-eyebrow {
+  font-size: 18px;
+  color: var(--accent);
+  margin: 0 0 8px;
+  font-weight: 500;
+}
+
+.hero-tagline {
+  font-size: 22px;
+  color: var(--text);
+  margin: 0 0 40px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-block;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: opacity 0.2s, background 0.2s;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  opacity: 0.85;
+}
+
+.btn-outline {
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+}
+
+.btn-outline:hover {
+  background: var(--accent-bg);
+}
+
+/* ── About ── */
+#about p {
+  max-width: 600px;
+  font-size: 19px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+/* ── Work ── */
+.work-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 24px;
+  margin-top: 32px;
+}
+
+.work-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  text-align: left;
+  background: var(--bg);
+  transition: box-shadow 0.2s;
+}
+
+.work-card:hover {
+  box-shadow: var(--shadow);
+}
+
+.work-card h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  color: var(--text-h);
+}
+
+.work-card p {
+  font-size: 15px;
+  color: var(--text);
+  margin: 0 0 16px;
+}
+
+.work-link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.work-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Contact ── */
+#contact {
+  text-align: center;
+}
+
+#contact p {
+  margin-bottom: 28px;
+  font-size: 18px;
+}
+
+.social-links {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.social-links a {
+  color: var(--text);
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.social-links a:hover {
+  color: var(--accent);
+}
+
+/* ── Footer ── */
+footer {
+  border-top: 1px solid var(--border);
+  text-align: center;
+  padding: 24px;
+  font-size: 14px;
+  color: var(--text);
 }
 
 .hero {
