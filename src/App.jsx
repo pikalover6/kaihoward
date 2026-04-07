@@ -1,77 +1,48 @@
 import './App.css'
 
+const navLinks = [
+  { label: 'GitHub',      href: 'https://github.com/pikalover6' },
+  { label: 'Huggingface', href: 'https://huggingface.co/totally-not-an-llm' },
+  { label: 'Instagram',   href: 'https://www.instagram.com/kaihoward824/' },
+  { label: 'Email',       href: 'mailto:kaihoward106@gmail.com' },
+]
+
 function App() {
   return (
-    <>
-      <header className="site-header">
-        <nav>
-          <span className="nav-name">Kai Howard</span>
-          <ul>
-            <li><a href="#about">About</a></li>
-            <li><a href="#work">Work</a></li>
-            <li><a href="#contact">Contact</a></li>
-          </ul>
+    <div className="page">
+      <div className="layout">
+
+        <nav className="navbar">
+          <span className="nav-brand">kaihoward.com</span>
+          <div className="nav-right">
+            {navLinks.map(({ label, href }) => (
+              <a
+                key={label}
+                href={href}
+                className="nav-link"
+                target={href.startsWith('http') ? '_blank' : undefined}
+                rel="noreferrer"
+              >
+                {label}
+              </a>
+            ))}
+          </div>
         </nav>
-      </header>
 
-      <main>
-        <section id="hero">
-          <div className="hero-content">
-            <p className="hero-eyebrow">Hello, I&apos;m</p>
-            <h1>Kai Howard</h1>
-            <p className="hero-tagline">Developer &amp; Creative</p>
-            <div className="hero-actions">
-              <a href="#work" className="btn btn-primary">See My Work</a>
-              <a href="#contact" className="btn btn-outline">Get in Touch</a>
-            </div>
+        <div className="card">
+          <div className="card-inner">
+            <p className="card-bio">
+              <span className="indent" />Hi, I&apos;m <strong>Kai Howard</strong> — a developer who loves
+              building clean, thoughtful digital experiences. I care deeply about the intersection
+              of design and technology, and I enjoy crafting interfaces that feel as good as they look.
+              When I&apos;m not writing code, you&apos;ll find me exploring machine learning, tinkering
+              with side projects, or chasing the perfect cup of coffee.
+            </p>
           </div>
-        </section>
+        </div>
 
-        <section id="about">
-          <h2>About Me</h2>
-          <p>
-            I&apos;m a developer passionate about building clean, thoughtful digital
-            experiences. I enjoy turning complex problems into simple, elegant
-            solutions.
-          </p>
-        </section>
-
-        <section id="work">
-          <h2>Work</h2>
-          <div className="work-grid">
-            <div className="work-card">
-              <h3>Project One</h3>
-              <p>A brief description of this project and what makes it interesting.</p>
-              <a href="#" className="work-link">View &rarr;</a>
-            </div>
-            <div className="work-card">
-              <h3>Project Two</h3>
-              <p>A brief description of this project and what makes it interesting.</p>
-              <a href="#" className="work-link">View &rarr;</a>
-            </div>
-            <div className="work-card">
-              <h3>Project Three</h3>
-              <p>A brief description of this project and what makes it interesting.</p>
-              <a href="#" className="work-link">View &rarr;</a>
-            </div>
-          </div>
-        </section>
-
-        <section id="contact">
-          <h2>Get in Touch</h2>
-          <p>Have a project in mind or just want to say hi?</p>
-          <a href="mailto:kai@example.com" className="btn btn-primary">Email Me</a>
-          <div className="social-links">
-            <a href="https://github.com" target="_blank" rel="noreferrer">GitHub</a>
-            <a href="https://linkedin.com" target="_blank" rel="noreferrer">LinkedIn</a>
-          </div>
-        </section>
-      </main>
-
-      <footer>
-        <p>&copy; {new Date().getFullYear()} Kai Howard</p>
-      </footer>
-    </>
+      </div>
+    </div>
   )
 }
 
