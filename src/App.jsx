@@ -31,18 +31,25 @@ function App() {
 
         <div className="card">
           <div className="card-inner">
+
             <p className="card-bio">
               <span className="indent" />
               I'm an 18 year old HS senior interested in AI and law. View my links and contact above.
-              View the source for this website{" "}
-              <a href="https://github.com/pikalover6/kaihoward" target="_blank" rel="noopener noreferrer">
+              {" "}View the source for this website{" "}
+              <a
+                href="https://github.com/pikalover6/kaihoward"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 here
               </a>.
-              
-              <p className="indent">
-                More content coming soon.
-              </p>
             </p>
+
+            <p className="card-bio">
+              <span className="indent" />
+              More content coming soon.
+            </p>
+
           </div>
         </div>
 
