@@ -32,11 +32,13 @@ function App() {
         <div className="card">
           <div className="card-inner">
             <p className="card-bio">
-              <span className="indent" />Hi, I&apos;m <strong>Kai Howard</strong> — a developer who loves
-              building clean, thoughtful digital experiences. I care deeply about the intersection
-              of design and technology, and I enjoy crafting interfaces that feel as good as they look.
-              When I&apos;m not writing code, you&apos;ll find me exploring machine learning, tinkering
-              with side projects, or chasing the perfect cup of coffee.
+              <span className="indent" />
+              I'm an 18 year old HS senior interested in AI and law. View my links and contact above.
+              View the source for this website{" "}
+              <a href="https://github.com/pikalover6/kaihoward" target="_blank" rel="noopener noreferrer">
+                here
+              </a>.
+              More content coming soon.
             </p>
           </div>
         </div>
