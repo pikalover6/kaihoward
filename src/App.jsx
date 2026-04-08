@@ -38,7 +38,10 @@ function App() {
               <a href="https://github.com/pikalover6/kaihoward" target="_blank" rel="noopener noreferrer">
                 here
               </a>.
-              More content coming soon.
+              
+              <p className="indent">
+                More content coming soon.
+              </p>
             </p>
           </div>
         </div>
