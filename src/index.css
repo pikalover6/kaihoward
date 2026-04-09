@@ -40,3 +40,10 @@ body {
   background-attachment: fixed;
   min-height: 100svh;
 }
+
+/* iOS Safari ignores background-attachment: fixed — use scroll instead */
+@supports (-webkit-touch-callout: none) {
+  body {
+    background-attachment: scroll;
+  }
+}
