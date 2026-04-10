@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import './App.css'
 
 const navLinks = [
@@ -8,12 +9,32 @@ const navLinks = [
 ]
 
 function App() {
+  const [clickCount, setClickCount] = useState(0)
+  const [showEasterEgg, setShowEasterEgg] = useState(false)
+
+  function handleBrandClick() {
+    const next = clickCount + 1
+    if (next >= 10) {
+      setShowEasterEgg(true)
+      setClickCount(0)
+    } else {
+      setClickCount(next)
+    }
+  }
+
   return (
     <div className="page">
+      {showEasterEgg && (
+        <div className="easter-egg-overlay" onClick={() => setShowEasterEgg(false)}>
+          <div className="easter-egg-popup">
+            SEB IS BAD AT PVP
+          </div>
+        </div>
+      )}
       <div className="layout">
 
         <nav className="navbar">
-          <span className="nav-brand">kaihoward.com</span>
+          <span className="nav-brand" onClick={handleBrandClick}>kaihoward.com</span>
           <div className="nav-right">
             {navLinks.map(({ label, href }) => (
               <a
