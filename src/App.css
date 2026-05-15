@@ -199,3 +199,66 @@
   to   { transform: scale(1);   opacity: 1; }
 }
 
+
+.card-inner {
+  width: 100%;
+}
+
+.personal-card-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.personal-title {
+  margin: 0;
+  color: var(--text-h);
+}
+
+.personal-subtitle {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.personal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.personal-label {
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.personal-textarea {
+  width: 100%;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  padding: 12px;
+  font: inherit;
+  color: var(--text-h);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.personal-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.personal-save {
+  border: 0;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.personal-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.personal-status {
+  color: var(--text-soft);
+}
