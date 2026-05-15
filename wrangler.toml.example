@@ -1,0 +1,8 @@
+name = "kaihoward"
+compatibility_date = "2026-05-15"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kaihoward-personal"
+database_id = "YOUR_D1_DATABASE_ID"
