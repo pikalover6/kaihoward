@@ -13,54 +13,15 @@ type GoalRow = {
   start_date: string | null
   due_date: string | null
   sort_order: number
+  x: number | null
+  y: number | null
+  collapsed: number
   created_at: string
   updated_at: string
 }
 
 const HORIZONS = new Set(['life', 'five-year', 'year', 'semester', 'month', 'week', 'day', 'minute'])
 const STATUSES = new Set(['planned', 'active', 'blocked', 'done'])
-const STARTER_GOALS = [
-  {
-    id: 'starter-law',
-    parentId: null,
-    title: 'Graduate law school',
-    description: 'The long-range objective that every class, habit, exam, application, and daily work block can ladder into.',
-    horizon: 'life',
-    status: 'active',
-    priority: 5,
-    sortOrder: 0,
-  },
-  {
-    id: 'starter-undergrad',
-    parentId: 'starter-law',
-    title: 'Finish undergrad with target GPA',
-    description: 'Keep grades, recommendations, transcript strength, and application readiness moving together.',
-    horizon: 'five-year',
-    status: 'active',
-    priority: 5,
-    sortOrder: 1,
-  },
-  {
-    id: 'starter-semester',
-    parentId: 'starter-undergrad',
-    title: 'Win this semester',
-    description: 'Map every syllabus into exams, papers, reading blocks, office hours, and recovery time.',
-    horizon: 'semester',
-    status: 'planned',
-    priority: 4,
-    sortOrder: 2,
-  },
-  {
-    id: 'starter-week',
-    parentId: 'starter-semester',
-    title: 'Build next week plan',
-    description: 'Convert the semester plan into calendar blocks and a realistic task stack.',
-    horizon: 'week',
-    status: 'planned',
-    priority: 3,
-    sortOrder: 3,
-  },
-]
 
 function toGoal(row: GoalRow) {
   return {
@@ -74,6 +35,9 @@ function toGoal(row: GoalRow) {
     startDate: row.start_date,
     dueDate: row.due_date,
     sortOrder: row.sort_order,
+    x: row.x,
+    y: row.y,
+    collapsed: row.collapsed === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -108,6 +72,9 @@ function normalizeGoalInput(body: unknown) {
       startDate: typeof input.startDate === 'string' && input.startDate ? input.startDate : null,
       dueDate: typeof input.dueDate === 'string' && input.dueDate ? input.dueDate : null,
       sortOrder: typeof input.sortOrder === 'number' && Number.isFinite(input.sortOrder) ? Math.round(input.sortOrder) : 0,
+      x: typeof input.x === 'number' && Number.isFinite(input.x) ? input.x : null,
+      y: typeof input.y === 'number' && Number.isFinite(input.y) ? input.y : null,
+      collapsed: typeof input.collapsed === 'boolean' && input.collapsed,
     },
   }
 }
@@ -120,42 +87,10 @@ async function readJson(request: Request) {
   }
 }
 
-async function seedStarterGoals(env: Env) {
-  const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM life_goals').first<{ count: number }>()
-
-  if ((count?.count ?? 0) > 0) {
-    return
-  }
-
-  await env.DB.batch(
-    STARTER_GOALS.map((goal) => (
-      env.DB
-        .prepare(`
-          INSERT OR IGNORE INTO life_goals (
-            id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, created_at, updated_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, datetime('now'), datetime('now'))
-        `)
-        .bind(
-          goal.id,
-          goal.parentId,
-          goal.title,
-          goal.description,
-          goal.horizon,
-          goal.status,
-          goal.priority,
-          goal.sortOrder,
-        )
-    )),
-  )
-}
-
 export const onRequestGet: PagesFunction<Env> = async (context) => {
-  await seedStarterGoals(context.env)
-
   const result = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       FROM life_goals
       ORDER BY sort_order ASC, created_at ASC
     `)
@@ -183,9 +118,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   await context.env.DB
     .prepare(`
       INSERT INTO life_goals (
-        id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, created_at, updated_at
+        id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `)
     .bind(
       id,
@@ -198,12 +133,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       goal.startDate,
       goal.dueDate,
       goal.sortOrder,
+      goal.x,
+      goal.y,
+      goal.collapsed ? 1 : 0,
     )
     .run()
 
   const row = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       FROM life_goals
       WHERE id = ?
     `)
@@ -233,7 +171,7 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
 
   const current = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       FROM life_goals
       WHERE id = ?
     `)
@@ -256,13 +194,16 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
     startDate: typeof input.startDate === 'string' ? input.startDate || null : current.start_date,
     dueDate: typeof input.dueDate === 'string' ? input.dueDate || null : current.due_date,
     sortOrder: typeof input.sortOrder === 'number' && Number.isFinite(input.sortOrder) ? Math.round(input.sortOrder) : current.sort_order,
+    x: typeof input.x === 'number' && Number.isFinite(input.x) ? input.x : current.x,
+    y: typeof input.y === 'number' && Number.isFinite(input.y) ? input.y : current.y,
+    collapsed: typeof input.collapsed === 'boolean' ? input.collapsed : current.collapsed === 1,
   }
 
   await context.env.DB
     .prepare(`
       UPDATE life_goals
       SET parent_id = ?, title = ?, description = ?, horizon = ?, status = ?, priority = ?, start_date = ?, due_date = ?,
-          sort_order = ?, updated_at = datetime('now')
+          sort_order = ?, x = ?, y = ?, collapsed = ?, updated_at = datetime('now')
       WHERE id = ?
     `)
     .bind(
@@ -275,13 +216,16 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
       next.startDate,
       next.dueDate,
       next.sortOrder,
+      next.x,
+      next.y,
+      next.collapsed ? 1 : 0,
       id,
     )
     .run()
 
   const row = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       FROM life_goals
       WHERE id = ?
     `)

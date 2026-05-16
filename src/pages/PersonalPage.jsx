@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const HORIZONS = [
-  { id: 'life', label: 'Life', span: 'North star' },
-  { id: 'five-year', label: '5Y', span: 'Long arc' },
-  { id: 'year', label: 'Year', span: 'Outcomes' },
-  { id: 'semester', label: 'Semester', span: 'Sprints' },
-  { id: 'month', label: 'Month', span: 'Milestones' },
-  { id: 'week', label: 'Week', span: 'Commitments' },
-  { id: 'day', label: 'Day', span: 'Actions' },
-  { id: 'minute', label: 'Now', span: 'Focus' },
+  { id: 'life', label: 'Life' },
+  { id: 'five-year', label: '5Y' },
+  { id: 'year', label: 'Year' },
+  { id: 'semester', label: 'Term' },
+  { id: 'month', label: 'Month' },
+  { id: 'week', label: 'Week' },
+  { id: 'day', label: 'Day' },
+  { id: 'minute', label: 'Now' },
 ]
 
 const STATUS_LABELS = {
@@ -18,60 +18,11 @@ const STATUS_LABELS = {
   done: 'Done',
 }
 
-const STARTER_GOALS = [
-  {
-    id: 'starter-law',
-    parentId: null,
-    title: 'Graduate law school',
-    description: 'A long-range objective that can absorb every class, habit, exam, application, and daily work block beneath it.',
-    horizon: 'life',
-    status: 'active',
-    priority: 5,
-    dueDate: '',
-    sortOrder: 0,
-  },
-  {
-    id: 'starter-undergrad',
-    parentId: 'starter-law',
-    title: 'Finish undergrad with target GPA',
-    description: 'Keep grades, recommendations, transcript strength, and application readiness moving together.',
-    horizon: 'five-year',
-    status: 'active',
-    priority: 5,
-    dueDate: '',
-    sortOrder: 1,
-  },
-  {
-    id: 'starter-semester',
-    parentId: 'starter-undergrad',
-    title: 'Win this semester',
-    description: 'Map every syllabus into exams, papers, reading blocks, office hours, and recovery time.',
-    horizon: 'semester',
-    status: 'planned',
-    priority: 4,
-    dueDate: '',
-    sortOrder: 2,
-  },
-  {
-    id: 'starter-week',
-    parentId: 'starter-semester',
-    title: 'Build next week plan',
-    description: 'Convert the semester plan into calendar blocks and a realistic task stack.',
-    horizon: 'week',
-    status: 'planned',
-    priority: 3,
-    dueDate: '',
-    sortOrder: 3,
-  },
-]
-
-function createStarterGoal(goal) {
-  return {
-    ...goal,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-}
+const VIEWPORT_CENTER = { x: 540, y: 320 }
+const NODE_WIDTH = 220
+const NODE_HEIGHT = 108
+const TREE_X_GAP = 320
+const TREE_Y_GAP = 168
 
 function getChildren(goals, parentId) {
   return goals
@@ -79,21 +30,15 @@ function getChildren(goals, parentId) {
     .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title))
 }
 
-function countDescendants(goals, id) {
-  const children = getChildren(goals, id)
-  return children.reduce((total, child) => total + 1 + countDescendants(goals, child.id), 0)
+function flattenGoals(goals, parentId = null, depth = 0) {
+  return getChildren(goals, parentId).flatMap((goal) => [
+    { ...goal, depth },
+    ...flattenGoals(goals, goal.id, depth + 1),
+  ])
 }
 
-function getGoalDepth(goals, goal) {
-  let depth = 0
-  let cursor = goal
-
-  while (cursor?.parentId) {
-    cursor = goals.find((item) => item.id === cursor.parentId)
-    depth += 1
-  }
-
-  return depth
+function getDescendantIds(goals, id) {
+  return getChildren(goals, id).flatMap((goal) => [goal.id, ...getDescendantIds(goals, goal.id)])
 }
 
 function getLineage(goals, goal) {
@@ -108,42 +53,87 @@ function getLineage(goals, goal) {
   return path
 }
 
-function flattenGoals(goals, parentId = null, depth = 0) {
-  return getChildren(goals, parentId).flatMap((goal) => [
-    { ...goal, depth },
-    ...flattenGoals(goals, goal.id, depth + 1),
-  ])
+function getDepth(goals, goal) {
+  return getLineage(goals, goal).length - 1
 }
 
-function statusText(status) {
+function getInitialPosition(goals, parentId) {
+  if (parentId) {
+    const parent = goals.find((goal) => goal.id === parentId)
+    const siblingCount = getChildren(goals, parentId).length
+
+    return {
+      x: (parent?.x ?? VIEWPORT_CENTER.x) + TREE_X_GAP,
+      y: (parent?.y ?? VIEWPORT_CENTER.y) + (siblingCount - 0.5) * TREE_Y_GAP,
+    }
+  }
+
+  const rootCount = getChildren(goals, null).length
+  return {
+    x: VIEWPORT_CENTER.x,
+    y: VIEWPORT_CENTER.y + rootCount * TREE_Y_GAP,
+  }
+}
+
+function getVisibleCanvasGoals(goals) {
+  const hidden = new Set()
+  goals.forEach((goal) => {
+    if (goal.collapsed) {
+      getDescendantIds(goals, goal.id).forEach((id) => hidden.add(id))
+    }
+  })
+
+  return goals.filter((goal) => !hidden.has(goal.id))
+}
+
+function monthMatrix(date) {
+  const year = date.getFullYear()
+  const month = date.getMonth()
+  const first = new Date(year, month, 1)
+  const start = new Date(first)
+  start.setDate(first.getDate() - first.getDay())
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(start)
+    day.setDate(start.getDate() + index)
+    return day
+  })
+}
+
+function dateKey(date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function statusCopy(status) {
   return STATUS_LABELS[status] ?? 'Planned'
 }
 
 function PersonalPage() {
   const [goals, setGoals] = useState([])
   const [selectedId, setSelectedId] = useState('')
-  const [activeHorizon, setActiveHorizon] = useState('all')
+  const [mode, setMode] = useState('canvas')
   const [status, setStatus] = useState('loading')
-  const [panel, setPanel] = useState('plan')
+  const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 0.9 })
+  const [dragging, setDragging] = useState(null)
+  const [draftOpen, setDraftOpen] = useState(false)
+  const [calendarDate, setCalendarDate] = useState(new Date())
   const [form, setForm] = useState({
     title: '',
     description: '',
     parentId: '',
-    horizon: 'month',
+    horizon: 'year',
+    status: 'planned',
     priority: 3,
     dueDate: '',
   })
+  const canvasRef = useRef(null)
 
-  const selectedGoal = goals.find((goal) => goal.id === selectedId) ?? goals[0]
-  const visibleGoals = useMemo(() => {
-    const flat = flattenGoals(goals)
-    return activeHorizon === 'all' ? flat : flat.filter((goal) => goal.horizon === activeHorizon)
-  }, [activeHorizon, goals])
+  const selectedGoal = goals.find((goal) => goal.id === selectedId) ?? null
+  const visibleGoals = useMemo(() => getVisibleCanvasGoals(goals), [goals])
+  const visibleIds = useMemo(() => new Set(visibleGoals.map((goal) => goal.id)), [visibleGoals])
+  const flatGoals = useMemo(() => flattenGoals(goals), [goals])
   const activeGoals = goals.filter((goal) => goal.status !== 'done')
-  const doneCount = goals.length - activeGoals.length
-  const focusQueue = [...activeGoals]
-    .sort((a, b) => b.priority - a.priority || getGoalDepth(goals, b) - getGoalDepth(goals, a))
-    .slice(0, 6)
+  const monthDays = useMemo(() => monthMatrix(calendarDate), [calendarDate])
 
   useEffect(() => {
     async function loadGoals() {
@@ -157,15 +147,10 @@ function PersonalPage() {
         }
 
         const data = await response.json()
-        const loadedGoals = data.goals ?? []
-        const initialGoals = loadedGoals.length ? loadedGoals : STARTER_GOALS.map(createStarterGoal)
-        setGoals(initialGoals)
-        setSelectedId(initialGoals[0]?.id ?? '')
-        setStatus('saved')
+        setGoals(data.goals ?? [])
+        setSelectedId(data.goals?.[0]?.id ?? '')
+        setStatus('synced')
       } catch {
-        const starter = STARTER_GOALS.map(createStarterGoal)
-        setGoals(starter)
-        setSelectedId(starter[0].id)
         setStatus('offline')
       }
     }
@@ -173,30 +158,51 @@ function PersonalPage() {
     loadGoals()
   }, [])
 
+  function openDraft(parentId = '') {
+    const parent = goals.find((goal) => goal.id === parentId)
+    const parentHorizonIndex = HORIZONS.findIndex((horizon) => horizon.id === parent?.horizon)
+    const nextHorizon = parentHorizonIndex >= 0 ? HORIZONS[Math.min(parentHorizonIndex + 1, HORIZONS.length - 1)].id : 'year'
+
+    setForm({
+      title: '',
+      description: '',
+      parentId,
+      horizon: nextHorizon,
+      status: 'planned',
+      priority: parent ? Math.max(1, parent.priority - 1) : 3,
+      dueDate: '',
+    })
+    setDraftOpen(true)
+  }
+
   async function createGoal(event) {
     event.preventDefault()
-
     const title = form.title.trim()
 
     if (!title) return
 
+    const position = getInitialPosition(goals, form.parentId || null)
     const optimisticGoal = {
       id: crypto.randomUUID(),
       parentId: form.parentId || null,
       title,
       description: form.description.trim(),
       horizon: form.horizon,
-      status: 'planned',
+      status: form.status,
       priority: Number(form.priority),
       dueDate: form.dueDate,
+      startDate: '',
       sortOrder: goals.length + 1,
+      collapsed: false,
+      x: position.x,
+      y: position.y,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
 
     setGoals((currentGoals) => [...currentGoals, optimisticGoal])
     setSelectedId(optimisticGoal.id)
-    setForm((currentForm) => ({ ...currentForm, title: '', description: '', dueDate: '' }))
+    setDraftOpen(false)
     setStatus('saving')
 
     try {
@@ -217,7 +223,7 @@ function PersonalPage() {
         setSelectedId(data.goal.id)
       }
 
-      setStatus('saved')
+      setStatus('synced')
     } catch {
       setStatus('offline')
     }
@@ -239,31 +245,17 @@ function PersonalPage() {
       }
 
       const data = await response.json()
-
       if (data.goal) {
         setGoals((currentGoals) => currentGoals.map((goal) => (goal.id === id ? data.goal : goal)))
       }
-
-      setStatus('saved')
+      setStatus('synced')
     } catch {
       setStatus('offline')
     }
   }
 
   async function deleteGoal(id) {
-    const deletedIds = new Set([id])
-    let changed = true
-
-    while (changed) {
-      changed = false
-      goals.forEach((goal) => {
-        if (goal.parentId && deletedIds.has(goal.parentId) && !deletedIds.has(goal.id)) {
-          deletedIds.add(goal.id)
-          changed = true
-        }
-      })
-    }
-
+    const deletedIds = new Set([id, ...getDescendantIds(goals, id)])
     const nextGoals = goals.filter((goal) => !deletedIds.has(goal.id))
     setGoals(nextGoals)
     setSelectedId(nextGoals[0]?.id ?? '')
@@ -271,288 +263,290 @@ function PersonalPage() {
 
     try {
       await fetch(`/personal/api/goals?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-      setStatus('saved')
+      setStatus('synced')
     } catch {
       setStatus('offline')
     }
   }
 
-  function addChild(parentGoal, horizon) {
-    setForm({
-      title: '',
-      description: '',
-      parentId: parentGoal.id,
-      horizon,
-      priority: Math.max(1, parentGoal.priority - 1),
-      dueDate: '',
-    })
-    setPanel('add')
+  function beginPan(event) {
+    if (event.target.closest('.canvas-node') || event.target.closest('.chrome-control')) return
+    setDragging({ type: 'pan', startX: event.clientX, startY: event.clientY, origin: viewport })
   }
 
-  const statusLabel = status === 'loading' ? 'Syncing' : status === 'saving' ? 'Saving' : status === 'offline' ? 'Local changes' : 'Synced'
-  const selectedHorizonIndex = HORIZONS.findIndex((horizon) => horizon.id === selectedGoal?.horizon)
-  const childHorizonOptions = selectedHorizonIndex >= 0 ? HORIZONS.slice(selectedHorizonIndex + 1) : HORIZONS
+  function beginNodeDrag(event, goal) {
+    event.stopPropagation()
+    setSelectedId(goal.id)
+    setDragging({
+      type: 'node',
+      id: goal.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      origin: { x: goal.x ?? VIEWPORT_CENTER.x, y: goal.y ?? VIEWPORT_CENTER.y },
+    })
+  }
+
+  function moveDrag(event) {
+    if (!dragging) return
+
+    if (dragging.type === 'pan') {
+      setViewport({
+        ...dragging.origin,
+        x: dragging.origin.x + event.clientX - dragging.startX,
+        y: dragging.origin.y + event.clientY - dragging.startY,
+      })
+      return
+    }
+
+    const nextPosition = {
+      x: dragging.origin.x + (event.clientX - dragging.startX) / viewport.scale,
+      y: dragging.origin.y + (event.clientY - dragging.startY) / viewport.scale,
+    }
+
+    setGoals((currentGoals) => currentGoals.map((goal) => (goal.id === dragging.id ? { ...goal, ...nextPosition } : goal)))
+  }
+
+  function endDrag() {
+    if (dragging?.type === 'node') {
+      const goal = goals.find((item) => item.id === dragging.id)
+      if (goal) updateGoal(goal.id, { x: goal.x, y: goal.y })
+    }
+
+    setDragging(null)
+  }
+
+  function zoomBy(amount) {
+    setViewport((current) => ({
+      ...current,
+      scale: Math.max(0.35, Math.min(1.8, Number((current.scale + amount).toFixed(2)))),
+    }))
+  }
+
+  function resetView() {
+    setViewport({ x: 0, y: 0, scale: 0.9 })
+  }
+
+  function autoLayout() {
+    let row = 0
+    const nextGoals = goals.map((goal) => {
+      const depth = getDepth(goals, goal)
+      const siblings = getChildren(goals, goal.parentId)
+      const siblingIndex = siblings.findIndex((item) => item.id === goal.id)
+
+      if (siblingIndex === 0 || !goal.parentId) row += 1
+
+      return {
+        ...goal,
+        x: VIEWPORT_CENTER.x + depth * TREE_X_GAP,
+        y: 160 + row * TREE_Y_GAP + siblingIndex * 24,
+      }
+    })
+
+    setGoals(nextGoals)
+    nextGoals.forEach((goal) => updateGoal(goal.id, { x: goal.x, y: goal.y }))
+  }
+
+  function goalsForDay(day) {
+    const key = dateKey(day)
+    return goals.filter((goal) => goal.dueDate === key)
+  }
+
+  const syncLabel = status === 'loading' ? 'syncing' : status === 'saving' ? 'saving' : status === 'offline' ? 'local' : 'synced'
 
   return (
-    <div className="personal-app">
-      <aside className="personal-sidebar">
-        <div className="personal-brand">
-          <span className="personal-brand-mark">K</span>
-          <div>
-            <p>Kai OS</p>
-            <span>Life goal organizer</span>
-          </div>
+    <div className="command-app">
+      <aside className="command-rail command-rail-left">
+        <div className="control-stack chrome-control">
+          <button className={mode === 'canvas' ? 'is-active' : ''} onClick={() => setMode('canvas')} type="button">Graph</button>
+          <button className={mode === 'calendar' ? 'is-active' : ''} onClick={() => setMode('calendar')} type="button">Calendar</button>
+          <button onClick={() => openDraft()} type="button">New</button>
         </div>
 
-        <nav className="personal-tabs" aria-label="Personal app sections">
-          <button className={panel === 'plan' ? 'is-active' : ''} onClick={() => setPanel('plan')} type="button">Plan</button>
-          <button className={panel === 'add' ? 'is-active' : ''} onClick={() => setPanel('add')} type="button">Add</button>
-          <button className={panel === 'systems' ? 'is-active' : ''} onClick={() => setPanel('systems')} type="button">Systems</button>
-        </nav>
-
-        <div className="personal-sync">
-          <span className={`sync-dot sync-${status}`}></span>
-          <span>{statusLabel}</span>
-        </div>
-
-        <div className="personal-stat-grid">
-          <div>
-            <strong>{goals.length}</strong>
-            <span>Total nodes</span>
-          </div>
-          <div>
-            <strong>{doneCount}</strong>
-            <span>Complete</span>
-          </div>
-          <div>
-            <strong>{focusQueue.length}</strong>
-            <span>Focus queue</span>
-          </div>
-          <div>
-            <strong>{HORIZONS.filter((horizon) => goals.some((goal) => goal.horizon === horizon.id)).length}</strong>
-            <span>Horizons</span>
-          </div>
+        <div className="metric-strip chrome-control">
+          <span>{syncLabel}</span>
+          <strong>{goals.length}</strong>
+          <span>nodes</span>
+          <strong>{activeGoals.length}</strong>
+          <span>active</span>
         </div>
       </aside>
 
-      <main className="personal-main">
-        <section className="personal-topbar">
-          <div>
-            <p className="personal-kicker">Private dashboard</p>
-            <h1>Master plan</h1>
-          </div>
-          <div className="personal-top-actions">
-            <button type="button" onClick={() => setPanel('add')}>New goal</button>
-            <a href="/">Public site</a>
-          </div>
-        </section>
-
-        <section className="horizon-rail" aria-label="Goal horizons">
-          <button className={activeHorizon === 'all' ? 'is-active' : ''} onClick={() => setActiveHorizon('all')} type="button">
-            <strong>All</strong>
-            <span>Full map</span>
-          </button>
-          {HORIZONS.map((horizon) => (
-            <button
-              className={activeHorizon === horizon.id ? 'is-active' : ''}
-              key={horizon.id}
-              onClick={() => setActiveHorizon(horizon.id)}
-              type="button"
+      <main className="command-stage">
+        {mode === 'canvas' ? (
+          <section
+            className={`canvas-shell ${dragging?.type === 'pan' ? 'is-panning' : ''}`}
+            onMouseDown={beginPan}
+            onMouseLeave={endDrag}
+            onMouseMove={moveDrag}
+            onMouseUp={endDrag}
+            ref={canvasRef}
+          >
+            <div
+              className="canvas-world"
+              style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})` }}
             >
-              <strong>{horizon.label}</strong>
-              <span>{horizon.span}</span>
-            </button>
-          ))}
-        </section>
+              <svg className="canvas-links" height="2400" viewBox="0 0 2400 2400" width="2400">
+                {visibleGoals.map((goal) => {
+                  const parent = goals.find((item) => item.id === goal.parentId)
+                  if (!parent || !visibleIds.has(parent.id)) return null
 
-        {panel === 'add' ? (
-          <section className="personal-panel add-panel">
-            <div className="panel-heading">
-              <div>
-                <p className="personal-kicker">Capture</p>
-                <h2>Add a goal node</h2>
-              </div>
-              <button type="button" onClick={() => setPanel('plan')}>Back to map</button>
-            </div>
+                  const startX = (parent.x ?? VIEWPORT_CENTER.x) + NODE_WIDTH
+                  const startY = (parent.y ?? VIEWPORT_CENTER.y) + NODE_HEIGHT / 2
+                  const endX = goal.x ?? VIEWPORT_CENTER.x
+                  const endY = (goal.y ?? VIEWPORT_CENTER.y) + NODE_HEIGHT / 2
+                  const midX = startX + (endX - startX) / 2
 
-            <form className="goal-form" onSubmit={createGoal}>
-              <label>
-                <span>Title</span>
-                <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
-              </label>
-              <label>
-                <span>Parent</span>
-                <select value={form.parentId} onChange={(event) => setForm({ ...form, parentId: event.target.value })}>
-                  <option value="">Top-level goal</option>
-                  {flattenGoals(goals).map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {'  '.repeat(goal.depth)}{goal.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Horizon</span>
-                <select value={form.horizon} onChange={(event) => setForm({ ...form, horizon: event.target.value })}>
-                  {HORIZONS.map((horizon) => <option key={horizon.id} value={horizon.id}>{horizon.label}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Priority</span>
-                <input
-                  max="5"
-                  min="1"
-                  type="range"
-                  value={form.priority}
-                  onChange={(event) => setForm({ ...form, priority: event.target.value })}
-                />
-              </label>
-              <label>
-                <span>Due date</span>
-                <input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} />
-              </label>
-              <label className="wide-field">
-                <span>Description</span>
-                <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={5} />
-              </label>
-              <button className="primary-action" type="submit">Add to map</button>
-            </form>
-          </section>
-        ) : panel === 'systems' ? (
-          <section className="personal-panel systems-panel">
-            <div className="panel-heading">
-              <div>
-                <p className="personal-kicker">Scaffolding</p>
-                <h2>Future command center</h2>
-              </div>
-            </div>
-            <div className="systems-grid">
-              <article>
-                <span>API</span>
-                <h3>ChatGPT planning assistant</h3>
-                <p>Reserved for an endpoint that can turn a goal into milestones, risks, study plans, and calendar blocks.</p>
-              </article>
-              <article>
-                <span>Notify</span>
-                <h3>Reminder engine</h3>
-                <p>Ready for email, push, or SMS hooks when goals need nudges, reviews, or daily planning prompts.</p>
-              </article>
-              <article>
-                <span>Calendar</span>
-                <h3>Schedule bridge</h3>
-                <p>A future place to sync weeks and days with Google Calendar or another planning surface.</p>
-              </article>
-              <article>
-                <span>Review</span>
-                <h3>Reflection loops</h3>
-                <p>Weekly and monthly retrospectives can attach evidence, notes, and decisions to each goal branch.</p>
-              </article>
-            </div>
-          </section>
-        ) : (
-          <section className="goal-workspace">
-            <div className="goal-map personal-panel">
-              <div className="panel-heading">
-                <div>
-                  <p className="personal-kicker">Hierarchy</p>
-                  <h2>Goal tree</h2>
-                </div>
-                <span>{visibleGoals.length} shown</span>
-              </div>
+                  return (
+                    <path
+                      d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
+                      key={`${parent.id}-${goal.id}`}
+                    />
+                  )
+                })}
+              </svg>
 
-              <div className="goal-tree">
-                {visibleGoals.map((goal) => (
-                  <button
-                    className={`goal-row ${selectedGoal?.id === goal.id ? 'is-selected' : ''} status-${goal.status}`}
-                    key={goal.id}
-                    onClick={() => setSelectedId(goal.id)}
-                    style={{ '--depth': goal.depth }}
-                    type="button"
-                  >
-                    <span className="goal-row-line"></span>
-                    <span className="goal-row-main">
-                      <strong>{goal.title}</strong>
-                      <small>{statusText(goal.status)} - {goal.horizon}</small>
-                    </span>
-                    <span className="goal-row-count">{countDescendants(goals, goal.id)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="goal-detail personal-panel">
-              {selectedGoal ? (
-                <>
-                  <div className="panel-heading">
-                    <div>
-                      <p className="personal-kicker">{selectedGoal.horizon}</p>
-                      <h2>{selectedGoal.title}</h2>
-                    </div>
-                    <select
-                      value={selectedGoal.status}
-                      onChange={(event) => updateGoal(selectedGoal.id, { status: event.target.value })}
-                    >
-                      {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
-                  </div>
-
-                  <p className="goal-description">{selectedGoal.description || 'No description yet.'}</p>
-
-                  <div className="goal-lineage">
-                    {getLineage(goals, selectedGoal).map((goal) => <span key={goal.id}>{goal.title}</span>)}
-                  </div>
-
-                  <div className="detail-grid">
-                    <div>
-                      <span>Priority</span>
-                      <strong>{selectedGoal.priority}/5</strong>
-                    </div>
-                    <div>
-                      <span>Children</span>
-                      <strong>{getChildren(goals, selectedGoal.id).length}</strong>
-                    </div>
-                    <div>
-                      <span>Due</span>
-                      <strong>{selectedGoal.dueDate || 'Unset'}</strong>
-                    </div>
-                  </div>
-
-                  {childHorizonOptions.length > 0 && (
-                    <div className="child-actions">
-                      {childHorizonOptions.map((horizon) => (
-                        <button key={horizon.id} type="button" onClick={() => addChild(selectedGoal, horizon.id)}>
-                          Add {horizon.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <button className="danger-action" type="button" onClick={() => deleteGoal(selectedGoal.id)}>Delete branch</button>
-                </>
-              ) : (
-                <div className="empty-state">Add your first north-star goal.</div>
-              )}
-            </div>
-
-            <div className="personal-panel focus-panel">
-              <div className="panel-heading">
-                <div>
-                  <p className="personal-kicker">Execution</p>
-                  <h2>Focus queue</h2>
-                </div>
-              </div>
-              <div className="focus-list">
-                {focusQueue.map((goal) => (
-                  <button key={goal.id} type="button" onClick={() => setSelectedId(goal.id)}>
+              {visibleGoals.map((goal) => (
+                <article
+                  className={`canvas-node status-${goal.status} ${selectedId === goal.id ? 'is-selected' : ''}`}
+                  key={goal.id}
+                  onMouseDown={(event) => beginNodeDrag(event, goal)}
+                  style={{ left: goal.x ?? VIEWPORT_CENTER.x, top: goal.y ?? VIEWPORT_CENTER.y }}
+                >
+                  <button className="node-hit" onClick={() => setSelectedId(goal.id)} type="button">
                     <span>{goal.horizon}</span>
                     <strong>{goal.title}</strong>
+                    <small>{statusCopy(goal.status)} / P{goal.priority}</small>
                   </button>
-                ))}
+                  <div className="node-actions chrome-control">
+                    <button onClick={() => updateGoal(goal.id, { collapsed: !goal.collapsed })} type="button">
+                      {goal.collapsed ? 'Expand' : 'Collapse'}
+                    </button>
+                    <button onClick={() => openDraft(goal.id)} type="button">Child</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {goals.length === 0 && (
+              <div className="blank-slate chrome-control">
+                <p>Empty system</p>
+                <button onClick={() => openDraft()} type="button">Create first node</button>
               </div>
+            )}
+          </section>
+        ) : (
+          <section className="calendar-shell">
+            <div className="calendar-top chrome-control">
+              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} type="button">Prev</button>
+              <strong>{calendarDate.toLocaleString(undefined, { month: 'long', year: 'numeric' })}</strong>
+              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} type="button">Next</button>
+            </div>
+            <div className="calendar-grid">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="calendar-label" key={day}>{day}</span>)}
+              {monthDays.map((day) => {
+                const dayGoals = goalsForDay(day)
+                const muted = day.getMonth() !== calendarDate.getMonth()
+
+                return (
+                  <div className={`calendar-cell ${muted ? 'is-muted' : ''}`} key={day.toISOString()}>
+                    <span>{day.getDate()}</span>
+                    {dayGoals.map((goal) => (
+                      <button key={goal.id} onClick={() => { setMode('canvas'); setSelectedId(goal.id) }} type="button">
+                        {goal.title}
+                      </button>
+                    ))}
+                  </div>
+                )
+              })}
             </div>
           </section>
         )}
       </main>
+
+      <aside className="command-rail command-rail-right">
+        <div className="control-stack chrome-control">
+          <button onClick={() => zoomBy(0.12)} type="button">Zoom +</button>
+          <button onClick={() => zoomBy(-0.12)} type="button">Zoom -</button>
+          <button onClick={resetView} type="button">Center</button>
+          <button onClick={autoLayout} type="button" disabled={goals.length === 0}>Layout</button>
+        </div>
+
+        <div className="inspector chrome-control">
+          {selectedGoal ? (
+            <>
+              <span>{getLineage(goals, selectedGoal).map((goal) => goal.title).join(' / ')}</span>
+              <input
+                value={selectedGoal.title}
+                onChange={(event) => updateGoal(selectedGoal.id, { title: event.target.value })}
+              />
+              <textarea
+                onChange={(event) => updateGoal(selectedGoal.id, { description: event.target.value })}
+                placeholder="Notes"
+                rows={4}
+                value={selectedGoal.description}
+              />
+              <select value={selectedGoal.horizon} onChange={(event) => updateGoal(selectedGoal.id, { horizon: event.target.value })}>
+                {HORIZONS.map((horizon) => <option key={horizon.id} value={horizon.id}>{horizon.label}</option>)}
+              </select>
+              <select value={selectedGoal.status} onChange={(event) => updateGoal(selectedGoal.id, { status: event.target.value })}>
+                {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <label>
+                Due
+                <input type="date" value={selectedGoal.dueDate ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { dueDate: event.target.value })} />
+              </label>
+              <label>
+                Priority
+                <input max="5" min="1" type="range" value={selectedGoal.priority} onChange={(event) => updateGoal(selectedGoal.id, { priority: Number(event.target.value) })} />
+              </label>
+              <button onClick={() => openDraft(selectedGoal.id)} type="button">Create subgoal</button>
+              <button className="danger" onClick={() => deleteGoal(selectedGoal.id)} type="button">Delete branch</button>
+            </>
+          ) : (
+            <p>Select a node.</p>
+          )}
+        </div>
+      </aside>
+
+      {draftOpen && (
+        <div className="draft-backdrop">
+          <form className="draft-panel chrome-control" onSubmit={createGoal}>
+            <div>
+              <span>New node</span>
+              <button onClick={() => setDraftOpen(false)} type="button">Close</button>
+            </div>
+            <input
+              autoFocus
+              placeholder="Goal title"
+              value={form.title}
+              onChange={(event) => setForm({ ...form, title: event.target.value })}
+            />
+            <textarea
+              placeholder="Definition, constraints, evidence"
+              rows={4}
+              value={form.description}
+              onChange={(event) => setForm({ ...form, description: event.target.value })}
+            />
+            <select value={form.parentId} onChange={(event) => setForm({ ...form, parentId: event.target.value })}>
+              <option value="">No parent</option>
+              {flatGoals.map((goal) => (
+                <option key={goal.id} value={goal.id}>{'  '.repeat(goal.depth)}{goal.title}</option>
+              ))}
+            </select>
+            <div className="draft-grid">
+              <select value={form.horizon} onChange={(event) => setForm({ ...form, horizon: event.target.value })}>
+                {HORIZONS.map((horizon) => <option key={horizon.id} value={horizon.id}>{horizon.label}</option>)}
+              </select>
+              <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
+                {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} />
+              <input max="5" min="1" type="range" value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} />
+            </div>
+            <button className="prime" type="submit">Create</button>
+          </form>
+        </div>
+      )}
     </div>
   )
 }
