@@ -1,0 +1,146 @@
+.command-app {
+  grid-template-columns: 112px minmax(0, 1fr) 320px;
+}
+
+.command-rail {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.command-rail-right {
+  overflow-y: auto;
+}
+
+.control-stack,
+.metric-strip {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.control-stack button,
+.blank-slate button,
+.draft-panel button,
+.node-actions button,
+.calendar-top button,
+.calendar-cell button,
+.inspector button {
+  width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.canvas-node.status-planned {
+  border-color: rgba(152, 162, 179, 0.28);
+}
+
+.canvas-node.status-active {
+  border-color: rgba(235, 241, 249, 0.56);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.055)),
+    #0a0c10;
+}
+
+.canvas-node.status-blocked {
+  border-color: rgba(213, 129, 72, 0.62);
+  background:
+    linear-gradient(180deg, rgba(180, 108, 56, 0.18), rgba(255, 255, 255, 0.045)),
+    #0d0907;
+}
+
+.canvas-node.status-done {
+  border-color: rgba(111, 141, 117, 0.72);
+  background:
+    linear-gradient(180deg, rgba(95, 135, 104, 0.18), rgba(255, 255, 255, 0.035)),
+    #070a08;
+}
+
+.node-hit {
+  padding-right: 42px;
+}
+
+.node-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #050506;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.status-done .node-check {
+  background: #d9f4df;
+  border-color: #d9f4df;
+}
+
+.node-hit small b {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  padding: 0 6px;
+  color: #050506;
+  background: #9aa4b2;
+}
+
+.status-active .node-hit small b {
+  background: #f2f5f8;
+}
+
+.status-blocked .node-hit small b {
+  background: #d58148;
+}
+
+.status-done .node-hit small b {
+  background: #9cc9a6;
+}
+
+.completion-toggle {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.completion-toggle i {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  color: #050506;
+  font-style: normal;
+}
+
+.completion-toggle.is-complete {
+  color: #050506;
+  background: #d9f4df;
+}
+
+.completion-toggle.is-complete i {
+  border-color: #050506;
+}
+
+@media (max-width: 980px) {
+  .command-app {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .command-rail-right {
+    width: min(320px, calc(100vw - 104px));
+  }
+}
+
+@media (max-width: 640px) {
+  .command-rail-left {
+    align-items: start;
+  }
+}

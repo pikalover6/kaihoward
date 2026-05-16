@@ -8,6 +8,7 @@ type GoalRow = {
   title: string
   description: string
   horizon: string
+  duration_label: string | null
   status: string
   priority: number
   start_date: string | null
@@ -20,7 +21,7 @@ type GoalRow = {
   updated_at: string
 }
 
-const HORIZONS = new Set(['life', 'five-year', 'year', 'semester', 'month', 'week', 'day', 'minute'])
+const HORIZONS = new Set(['life', 'five-year', 'year', 'semester', 'month', 'week', 'day', 'minute', 'custom'])
 const STATUSES = new Set(['planned', 'active', 'blocked', 'done'])
 
 function toGoal(row: GoalRow) {
@@ -30,6 +31,7 @@ function toGoal(row: GoalRow) {
     title: row.title,
     description: row.description,
     horizon: row.horizon,
+    durationLabel: row.duration_label,
     status: row.status,
     priority: row.priority,
     startDate: row.start_date,
@@ -67,6 +69,7 @@ function normalizeGoalInput(body: unknown) {
       title,
       description: typeof input.description === 'string' ? input.description.trim() : '',
       horizon,
+      durationLabel: typeof input.durationLabel === 'string' ? input.durationLabel.trim() : '',
       status,
       priority,
       startDate: typeof input.startDate === 'string' && input.startDate ? input.startDate : null,
@@ -90,7 +93,7 @@ async function readJson(request: Request) {
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const result = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       FROM life_goals
       ORDER BY sort_order ASC, created_at ASC
     `)
@@ -118,9 +121,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   await context.env.DB
     .prepare(`
       INSERT INTO life_goals (
-        id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+        id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `)
     .bind(
       id,
@@ -128,6 +131,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       goal.title,
       goal.description,
       goal.horizon,
+      goal.durationLabel,
       goal.status,
       goal.priority,
       goal.startDate,
@@ -141,7 +145,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   const row = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       FROM life_goals
       WHERE id = ?
     `)
@@ -171,7 +175,7 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
 
   const current = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       FROM life_goals
       WHERE id = ?
     `)
@@ -187,6 +191,7 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
     title: typeof input.title === 'string' && input.title.trim() ? input.title.trim() : current.title,
     description: typeof input.description === 'string' ? input.description.trim() : current.description,
     horizon: typeof input.horizon === 'string' && HORIZONS.has(input.horizon) ? input.horizon : current.horizon,
+    durationLabel: typeof input.durationLabel === 'string' ? input.durationLabel.trim() : current.duration_label,
     status: typeof input.status === 'string' && STATUSES.has(input.status) ? input.status : current.status,
     priority: typeof input.priority === 'number' && Number.isFinite(input.priority)
       ? Math.max(1, Math.min(5, Math.round(input.priority)))
@@ -202,7 +207,7 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
   await context.env.DB
     .prepare(`
       UPDATE life_goals
-      SET parent_id = ?, title = ?, description = ?, horizon = ?, status = ?, priority = ?, start_date = ?, due_date = ?,
+      SET parent_id = ?, title = ?, description = ?, horizon = ?, duration_label = ?, status = ?, priority = ?, start_date = ?, due_date = ?,
           sort_order = ?, x = ?, y = ?, collapsed = ?, updated_at = datetime('now')
       WHERE id = ?
     `)
@@ -211,6 +216,7 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
       next.title,
       next.description,
       next.horizon,
+      next.durationLabel,
       next.status,
       next.priority,
       next.startDate,
@@ -225,7 +231,7 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
 
   const row = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
       FROM life_goals
       WHERE id = ?
     `)

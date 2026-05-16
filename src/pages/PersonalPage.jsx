@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-const HORIZONS = [
-  { id: 'life', label: 'Life' },
-  { id: 'five-year', label: '5Y' },
-  { id: 'year', label: 'Year' },
-  { id: 'semester', label: 'Term' },
-  { id: 'month', label: 'Month' },
-  { id: 'week', label: 'Week' },
-  { id: 'day', label: 'Day' },
-  { id: 'minute', label: 'Now' },
-]
+const DURATION_FALLBACKS = {
+  life: 'Lifetime',
+  'five-year': '5 years',
+  year: '1 year',
+  semester: 'Semester',
+  month: '1 month',
+  week: '1 week',
+  day: '1 day',
+  minute: 'Immediate',
+}
 
 const STATUS_LABELS = {
   planned: 'Planned',
@@ -108,6 +108,10 @@ function statusCopy(status) {
   return STATUS_LABELS[status] ?? 'Planned'
 }
 
+function durationCopy(goal) {
+  return goal.durationLabel || DURATION_FALLBACKS[goal.horizon] || goal.horizon || 'Custom'
+}
+
 function PersonalPage() {
   const [goals, setGoals] = useState([])
   const [selectedId, setSelectedId] = useState('')
@@ -121,10 +125,15 @@ function PersonalPage() {
     title: '',
     description: '',
     parentId: '',
-    horizon: 'year',
+    durationLabel: '',
     status: 'planned',
     priority: 3,
     dueDate: '',
+  })
+  const [inspectorDraft, setInspectorDraft] = useState({
+    title: '',
+    description: '',
+    durationLabel: '',
   })
   const canvasRef = useRef(null)
 
@@ -158,16 +167,29 @@ function PersonalPage() {
     loadGoals()
   }, [])
 
+  useEffect(() => {
+    if (!selectedGoal) {
+      setInspectorDraft({ title: '', description: '', durationLabel: '' })
+      return
+    }
+
+    setInspectorDraft({
+      title: selectedGoal.title,
+      description: selectedGoal.description,
+      durationLabel: durationCopy(selectedGoal),
+    })
+  // Keep focused inspector text stable while async saves update the selected goal.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGoal?.id])
+
   function openDraft(parentId = '') {
     const parent = goals.find((goal) => goal.id === parentId)
-    const parentHorizonIndex = HORIZONS.findIndex((horizon) => horizon.id === parent?.horizon)
-    const nextHorizon = parentHorizonIndex >= 0 ? HORIZONS[Math.min(parentHorizonIndex + 1, HORIZONS.length - 1)].id : 'year'
 
     setForm({
       title: '',
       description: '',
       parentId,
-      horizon: nextHorizon,
+      durationLabel: parent ? '' : '1 year',
       status: 'planned',
       priority: parent ? Math.max(1, parent.priority - 1) : 3,
       dueDate: '',
@@ -187,7 +209,8 @@ function PersonalPage() {
       parentId: form.parentId || null,
       title,
       description: form.description.trim(),
-      horizon: form.horizon,
+      horizon: 'custom',
+      durationLabel: form.durationLabel.trim(),
       status: form.status,
       priority: Number(form.priority),
       dueDate: form.dueDate,
@@ -254,6 +277,27 @@ function PersonalPage() {
     }
   }
 
+  function commitInspectorDraft() {
+    if (!selectedGoal) return
+
+    const updates = {}
+    const title = inspectorDraft.title.trim()
+    const description = inspectorDraft.description.trim()
+    const durationLabel = inspectorDraft.durationLabel.trim()
+
+    if (title && title !== selectedGoal.title) updates.title = title
+    if (description !== selectedGoal.description) updates.description = description
+    if (durationLabel !== durationCopy(selectedGoal)) updates.durationLabel = durationLabel
+
+    if (Object.keys(updates).length > 0) {
+      updateGoal(selectedGoal.id, updates)
+    }
+  }
+
+  function toggleDone(goal) {
+    updateGoal(goal.id, { status: goal.status === 'done' ? 'active' : 'done' })
+  }
+
   async function deleteGoal(id) {
     const deletedIds = new Set([id, ...getDescendantIds(goals, id)])
     const nextGoals = goals.filter((goal) => !deletedIds.has(goal.id))
@@ -313,6 +357,42 @@ function PersonalPage() {
     }
 
     setDragging(null)
+  }
+
+  function zoomToward(clientX, clientY, nextScale) {
+    const bounds = canvasRef.current?.getBoundingClientRect()
+    if (!bounds) {
+      setViewport((current) => ({ ...current, scale: nextScale }))
+      return
+    }
+
+    setViewport((current) => {
+      const worldX = (clientX - bounds.left - current.x) / current.scale
+      const worldY = (clientY - bounds.top - current.y) / current.scale
+
+      return {
+        x: clientX - bounds.left - worldX * nextScale,
+        y: clientY - bounds.top - worldY * nextScale,
+        scale: nextScale,
+      }
+    })
+  }
+
+  function handleWheel(event) {
+    event.preventDefault()
+
+    if (event.shiftKey) {
+      setViewport((current) => ({
+        ...current,
+        x: current.x - event.deltaY,
+        y: current.y - event.deltaX,
+      }))
+      return
+    }
+
+    const direction = event.deltaY > 0 ? -1 : 1
+    const nextScale = Math.max(0.35, Math.min(1.8, Number((viewport.scale + direction * 0.08).toFixed(2))))
+    zoomToward(event.clientX, event.clientY, nextScale)
   }
 
   function zoomBy(amount) {
@@ -379,6 +459,7 @@ function PersonalPage() {
             onMouseLeave={endDrag}
             onMouseMove={moveDrag}
             onMouseUp={endDrag}
+            onWheel={handleWheel}
             ref={canvasRef}
           >
             <div
@@ -412,16 +493,29 @@ function PersonalPage() {
                   onMouseDown={(event) => beginNodeDrag(event, goal)}
                   style={{ left: goal.x ?? VIEWPORT_CENTER.x, top: goal.y ?? VIEWPORT_CENTER.y }}
                 >
+                  <button
+                    aria-label={goal.status === 'done' ? 'Mark active' : 'Mark complete'}
+                    className="node-check"
+                    onClick={(event) => { event.stopPropagation(); toggleDone(goal) }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    type="button"
+                  >
+                    {goal.status === 'done' ? '✓' : ''}
+                  </button>
                   <button className="node-hit" onClick={() => setSelectedId(goal.id)} type="button">
-                    <span>{goal.horizon}</span>
+                    <span>{durationCopy(goal)}</span>
                     <strong>{goal.title}</strong>
-                    <small>{statusCopy(goal.status)} / P{goal.priority}</small>
+                    <small><b>{statusCopy(goal.status)}</b> / P{goal.priority}</small>
                   </button>
                   <div className="node-actions chrome-control">
-                    <button onClick={() => updateGoal(goal.id, { collapsed: !goal.collapsed })} type="button">
+                    <button
+                      onMouseDown={(event) => event.stopPropagation()}
+                      onClick={() => updateGoal(goal.id, { collapsed: !goal.collapsed })}
+                      type="button"
+                    >
                       {goal.collapsed ? 'Expand' : 'Collapse'}
                     </button>
-                    <button onClick={() => openDraft(goal.id)} type="button">Child</button>
+                    <button onMouseDown={(event) => event.stopPropagation()} onClick={() => openDraft(goal.id)} type="button">Child</button>
                   </div>
                 </article>
               ))}
@@ -475,19 +569,45 @@ function PersonalPage() {
           {selectedGoal ? (
             <>
               <span>{getLineage(goals, selectedGoal).map((goal) => goal.title).join(' / ')}</span>
+              <button
+                className={`completion-toggle ${selectedGoal.status === 'done' ? 'is-complete' : ''}`}
+                onClick={() => toggleDone(selectedGoal)}
+                type="button"
+              >
+                <i>{selectedGoal.status === 'done' ? '✓' : ''}</i>
+                {selectedGoal.status === 'done' ? 'Complete' : 'Mark complete'}
+              </button>
               <input
-                value={selectedGoal.title}
-                onChange={(event) => updateGoal(selectedGoal.id, { title: event.target.value })}
+                value={inspectorDraft.title}
+                onBlur={commitInspectorDraft}
+                onChange={(event) => setInspectorDraft((draft) => ({ ...draft, title: event.target.value }))}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.currentTarget.blur()
+                  }
+                }}
               />
               <textarea
-                onChange={(event) => updateGoal(selectedGoal.id, { description: event.target.value })}
+                onBlur={commitInspectorDraft}
+                onChange={(event) => setInspectorDraft((draft) => ({ ...draft, description: event.target.value }))}
                 placeholder="Notes"
                 rows={4}
-                value={selectedGoal.description}
+                value={inspectorDraft.description}
               />
-              <select value={selectedGoal.horizon} onChange={(event) => updateGoal(selectedGoal.id, { horizon: event.target.value })}>
-                {HORIZONS.map((horizon) => <option key={horizon.id} value={horizon.id}>{horizon.label}</option>)}
-              </select>
+              <label>
+                Duration
+                <input
+                  placeholder="e.g. 45 min, 3 weeks, Spring 2027"
+                  value={inspectorDraft.durationLabel}
+                  onBlur={commitInspectorDraft}
+                  onChange={(event) => setInspectorDraft((draft) => ({ ...draft, durationLabel: event.target.value }))}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.currentTarget.blur()
+                    }
+                  }}
+                />
+              </label>
               <select value={selectedGoal.status} onChange={(event) => updateGoal(selectedGoal.id, { status: event.target.value })}>
                 {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
@@ -534,9 +654,11 @@ function PersonalPage() {
               ))}
             </select>
             <div className="draft-grid">
-              <select value={form.horizon} onChange={(event) => setForm({ ...form, horizon: event.target.value })}>
-                {HORIZONS.map((horizon) => <option key={horizon.id} value={horizon.id}>{horizon.label}</option>)}
-              </select>
+              <input
+                placeholder="Duration: 45 min, 3 weeks, 5 years"
+                value={form.durationLabel}
+                onChange={(event) => setForm({ ...form, durationLabel: event.target.value })}
+              />
               <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
                 {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
