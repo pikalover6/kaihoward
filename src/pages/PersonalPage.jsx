@@ -10,7 +10,7 @@ function PersonalPage() {
       setStatus('loading')
 
       try {
-        const response = await fetch('/api/personal/note')
+        const response = await fetch('/personal/api/note')
 
         if (!response.ok) {
           throw new Error('Could not load note')
@@ -32,7 +32,7 @@ function PersonalPage() {
     setStatus('loading')
 
     try {
-      const response = await fetch('/api/personal/note', {
+      const response = await fetch('/personal/api/note', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
