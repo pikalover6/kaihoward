@@ -4,5 +4,5 @@ pages_build_output_dir = "dist"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "kaihoward-personal"
-database_id = "YOUR_D1_DATABASE_ID"
+database_name = "kai-personal-db"
+database_id = "7d9dee28-9595-460d-b48c-3d1b5bb0540d"
