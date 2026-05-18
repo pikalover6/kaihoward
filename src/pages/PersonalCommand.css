@@ -1,5 +1,4 @@
 .command-app {
-  min-height: 100dvh;
   height: 100dvh;
   grid-template-columns: 124px minmax(0, 1fr) 320px;
 }
