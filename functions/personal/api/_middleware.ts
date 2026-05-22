@@ -1,6 +1,5 @@
 export interface Env {
-  DB: D1Database
-  API_KEY: string
+  API_KEY?: string
 }
 
 const CORS_HEADERS: Record<string, string> = {
@@ -24,8 +23,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return new Response(null, { status: 204, headers: CORS_HEADERS })
   }
 
+  const configuredKey = context.env.API_KEY
   const provided = extractApiKey(context.request)
-  if (!provided || provided !== context.env.API_KEY) {
+  const hasCloudflareAccess = Boolean(context.request.headers.get('Cf-Access-Jwt-Assertion'))
+
+  if (!hasCloudflareAccess && (!configuredKey || provided !== configuredKey)) {
     return Response.json({ error: 'Unauthorized' }, { status: 401, headers: CORS_HEADERS })
   }
 
