@@ -16,6 +16,10 @@ function extractApiKey(request: Request): string | null {
   const auth = request.headers.get('Authorization')
   if (auth?.startsWith('Bearer ')) return auth.slice(7)
 
+  const url = new URL(request.url)
+  const queryKey = url.searchParams.get('api_key')
+  if (queryKey) return queryKey
+
   return null
 }
 
