@@ -428,7 +428,9 @@ function PersonalPage() {
 
   function goalsForDay(day) {
     const key = dateKey(day)
-    return goals.filter((goal) => goal.dueDate === key)
+    return goals
+      .filter((goal) => goal.dueDate === key || (goal.startAt && goal.startAt.slice(0, 10) === key))
+      .sort((a, b) => (a.startAt ?? '99').localeCompare(b.startAt ?? '99'))
   }
 
   const syncLabel = status === 'loading' ? 'syncing' : status === 'saving' ? 'saving' : status === 'offline' ? 'local' : 'synced'
@@ -546,7 +548,7 @@ function PersonalPage() {
                     <span>{day.getDate()}</span>
                     {dayGoals.map((goal) => (
                       <button key={goal.id} onClick={() => { setMode('canvas'); setSelectedId(goal.id) }} type="button">
-                        {goal.title}
+                        {goal.startAt ? `${goal.startAt.slice(11, 16)} ` : ''}{goal.title}
                       </button>
                     ))}
                   </div>
@@ -614,6 +616,14 @@ function PersonalPage() {
               <label>
                 Due
                 <input type="date" value={selectedGoal.dueDate ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { dueDate: event.target.value })} />
+              </label>
+              <label>
+                Scheduled start
+                <input type="datetime-local" value={selectedGoal.startAt ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { startAt: event.target.value })} />
+              </label>
+              <label>
+                Scheduled end
+                <input type="datetime-local" value={selectedGoal.endAt ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { endAt: event.target.value })} />
               </label>
               <label>
                 Priority
