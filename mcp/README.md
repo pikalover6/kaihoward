@@ -28,7 +28,29 @@ It is a single **zero-dependency** Node file (`kai-planner-mcp.mjs`). No build, 
 
 ---
 
-## Setup on a new machine (MacBook, another PC, …)
+## Install in Claude Desktop — the `.mcpb` extension (recommended)
+
+The current Claude Desktop app installs local connectors as **Desktop Extensions
+(`.mcpb`)**, not via `claude_desktop_config.json` (it strips unknown keys from that
+file). This one bundle works on Windows and macOS and prompts you for the secrets
+on install (stored securely by the OS).
+
+1. Get `kai-planner.mcpb`:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/pikalover6/kaihoward/main/mcp/kai-planner.mcpb -o kai-planner.mcpb
+   ```
+   (or copy it from this repo / your Desktop).
+2. In Claude Desktop: **Settings → Extensions → Advanced settings → Extension
+   Developer → Install Extension…**, choose the `.mcpb`.
+3. When prompted, paste your **Planner API Key**, **Cloudflare Access Client ID**,
+   and **Cloudflare Access Client Secret** (leave the API Base URL default).
+4. Enable the extension. Ask Claude: *"what's on my planner today?"*
+
+To rebuild the bundle after editing the server: `npx -y @anthropic-ai/mcpb pack mcp/extension mcp/kai-planner.mcpb`.
+
+---
+
+## Script install (Claude Code CLI, or older Claude Desktop builds)
 
 You need three secrets (ask Kai / copy from your password manager):
 
