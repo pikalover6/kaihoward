@@ -20,7 +20,7 @@
 import { homedir, platform } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, readdirSync } from 'node:fs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -49,11 +49,35 @@ if (!apiKey) {
   process.exit(1)
 }
 
+// Secrets passed as CLI flags can linger in shell history; nudge toward env vars.
+if (args['api-key'] || args['cf-secret'] || args['cf-id']) {
+  console.error('Note: secrets passed as CLI flags may persist in shell history. On shared machines, prefer')
+  console.error('      env vars: KAI_API_KEY, CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET.')
+}
+
+// On Windows the Microsoft Store (MSIX) build of Claude Desktop reads its config
+// from a virtualized path under \Packages\Claude_*\LocalCache\Roaming\Claude,
+// NOT %APPDATA%\Claude. Prefer the packaged path when that build is present.
+function windowsClaudeDir() {
+  const local = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local')
+  try {
+    for (const name of readdirSync(join(local, 'Packages'))) {
+      if (/^Claude_/i.test(name)) {
+        const dir = join(local, 'Packages', name, 'LocalCache', 'Roaming', 'Claude')
+        if (existsSync(dir)) return dir
+      }
+    }
+  } catch {
+    /* no Packages dir — fall through */
+  }
+  return join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'Claude')
+}
+
 // Resolve the Claude Desktop config path for this OS.
 function claudeConfigPath() {
   if (args.config) return resolve(args.config)
   const p = platform()
-  if (p === 'win32') return join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json')
+  if (p === 'win32') return join(windowsClaudeDir(), 'claude_desktop_config.json')
   if (p === 'darwin') return join(homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
   return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'Claude', 'claude_desktop_config.json')
 }

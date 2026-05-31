@@ -71,6 +71,12 @@ The installer copies the server to a stable spot (`~/.kai-planner/`) and adds a
 `kai-planner` entry to your Claude Desktop config **without disturbing any other
 connectors**.
 
+> **On a shared machine**, pass the secrets as environment variables instead of
+> CLI flags so they don't land in your shell history:
+> ```bash
+> KAI_API_KEY=… CF_ACCESS_CLIENT_ID=… CF_ACCESS_CLIENT_SECRET=… node install.mjs
+> ```
+
 ### 3. Restart Claude Desktop
 
 Fully quit (not just close the window) and reopen it. Ask:

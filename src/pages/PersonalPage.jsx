@@ -129,6 +129,8 @@ function PersonalPage() {
     status: 'planned',
     priority: 3,
     dueDate: '',
+    startAt: '',
+    endAt: '',
   })
   const [inspectorDraft, setInspectorDraft] = useState({
     title: '',
@@ -193,6 +195,8 @@ function PersonalPage() {
       status: 'planned',
       priority: parent ? Math.max(1, parent.priority - 1) : 3,
       dueDate: '',
+      startAt: '',
+      endAt: '',
     })
     setDraftOpen(true)
   }
@@ -214,6 +218,8 @@ function PersonalPage() {
       status: form.status,
       priority: Number(form.priority),
       dueDate: form.dueDate,
+      startAt: form.startAt,
+      endAt: form.endAt,
       startDate: '',
       sortOrder: goals.length + 1,
       collapsed: false,
@@ -673,6 +679,8 @@ function PersonalPage() {
                 {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
               <input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} />
+              <input type="datetime-local" title="Scheduled start" value={form.startAt} onChange={(event) => setForm({ ...form, startAt: event.target.value })} />
+              <input type="datetime-local" title="Scheduled end" value={form.endAt} onChange={(event) => setForm({ ...form, endAt: event.target.value })} />
               <input max="5" min="1" type="range" value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} />
             </div>
             <button className="prime" type="submit">Create</button>

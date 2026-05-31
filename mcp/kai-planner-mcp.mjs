@@ -26,7 +26,9 @@ const CF_ACCESS_CLIENT_ID = process.env.CF_ACCESS_CLIENT_ID || ''
 const CF_ACCESS_CLIENT_SECRET = process.env.CF_ACCESS_CLIENT_SECRET || ''
 
 const SERVER_INFO = { name: 'kai-planner', version: '1.0.0' }
-const SUPPORTED_PROTOCOL = '2024-11-05'
+// Protocol versions we can actually speak, newest first. Used to negotiate in initialize.
+const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05']
+const LATEST_PROTOCOL = SUPPORTED_PROTOCOLS[0]
 
 function log(...args) {
   // stderr only — never pollute stdout (the JSON-RPC channel).
@@ -93,7 +95,13 @@ function todayLocal() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const dayOf = (value) => (typeof value === 'string' && value.length >= 10 ? value.slice(0, 10) : null)
+// Normalize any date-ish string ("2026-5-3", "2026-05-30T14:30") to zero-padded
+// YYYY-MM-DD, else null. Guards string date comparisons against non-padded input.
+function normDay(value) {
+  if (typeof value !== 'string') return null
+  const m = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : null
+}
 
 function buildTree(goals) {
   const byId = new Map(goals.map((g) => [g.id, { ...g, children: [] }]))
@@ -101,7 +109,10 @@ function buildTree(goals) {
   for (const node of byId.values()) {
     const parent = node.parentId ? byId.get(node.parentId) : null
     if (parent) parent.children.push(node)
-    else roots.push(node)
+    else {
+      if (node.parentId) log(`warning: goal ${node.id} references missing parent ${node.parentId}; showing as root`)
+      roots.push(node)
+    }
   }
   const sortRec = (nodes) => {
     nodes.sort((a, b) => a.sortOrder - b.sortOrder || String(a.title).localeCompare(String(b.title)))
@@ -113,11 +124,13 @@ function buildTree(goals) {
 
 function descendantIds(goals, id) {
   const out = []
+  const seen = new Set() // guard against cyclic data so we never infinite-loop
   const stack = [id]
   while (stack.length) {
     const cur = stack.pop()
     for (const g of goals) {
-      if (g.parentId === cur) {
+      if (g.parentId === cur && !seen.has(g.id)) {
+        seen.add(g.id)
         out.push(g.id)
         stack.push(g.id)
       }
@@ -160,7 +173,7 @@ const TOOLS = [
       const [goals, note] = await Promise.all([fetchGoals(), api('GET', '/note')])
       const today = todayLocal()
       const todays = goals
-        .filter((g) => dayOf(g.startAt) === today || g.dueDate === today)
+        .filter((g) => normDay(g.startAt) === today || normDay(g.dueDate) === today)
         .sort((a, b) => String(a.startAt ?? '99').localeCompare(String(b.startAt ?? '99')))
       return {
         date: today,
@@ -204,12 +217,12 @@ const TOOLS = [
       additionalProperties: false,
     },
     handler: async (args) => {
-      const from = args.from || todayLocal()
-      const to = args.to || from
+      const from = normDay(args.from) || todayLocal()
+      const to = normDay(args.to) || from
       const goals = await fetchGoals()
       const inRange = (d) => d && d >= from && d <= to
       const items = goals
-        .filter((g) => inRange(dayOf(g.startAt)) || inRange(g.dueDate))
+        .filter((g) => inRange(normDay(g.startAt)) || inRange(normDay(g.dueDate)))
         .sort((a, b) => String(a.startAt ?? a.dueDate ?? '99').localeCompare(String(b.startAt ?? b.dueDate ?? '99')))
       return { from, to, count: items.length, items: items.map(summarize) }
     },
@@ -433,12 +446,15 @@ async function handleRequest(msg) {
   const { id, method, params } = msg
 
   switch (method) {
-    case 'initialize':
+    case 'initialize': {
+      // Per MCP spec: echo the client's version if we support it, otherwise offer our latest.
+      const requested = typeof params?.protocolVersion === 'string' ? params.protocolVersion : ''
       return sendResult(id, {
-        protocolVersion: typeof params?.protocolVersion === 'string' ? params.protocolVersion : SUPPORTED_PROTOCOL,
+        protocolVersion: SUPPORTED_PROTOCOLS.includes(requested) ? requested : LATEST_PROTOCOL,
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER_INFO,
       })
+    }
 
     case 'ping':
       return sendResult(id, {})
