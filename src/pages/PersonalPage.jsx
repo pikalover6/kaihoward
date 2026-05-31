@@ -39,7 +39,6 @@ const BEZIER_STRENGTH = 0.45      // 0 = straight, 1 = very curved (fraction of 
 
 // Smooth-animation constants
 const LAYOUT_ANIM_DURATION = 420  // ms for position interpolation
-const LAYOUT_ANIM_FPS = 60        // frames per second for the animation loop
 
 // Aesthetic-cleanup pass
 const LAYOUT_RELAX_ITERATIONS = 8 // overlap-prevention relaxation passes
@@ -539,8 +538,6 @@ function PersonalPage() {
     })
 
     const startTime = performance.now()
-    const totalFrames = Math.ceil((LAYOUT_ANIM_DURATION / 1000) * LAYOUT_ANIM_FPS)
-    let frame = 0
 
     function easeInOut(t) {
       // Cubic ease-in-out for a smooth, polished feel.
@@ -548,33 +545,34 @@ function PersonalPage() {
     }
 
     function tick() {
-      frame++
       const elapsed = performance.now() - startTime
       const rawT = Math.min(elapsed / LAYOUT_ANIM_DURATION, 1)
       const t = easeInOut(rawT)
 
-      setGoals((currentGoals) =>
-        currentGoals.map((goal) => {
-          const start = startPositions[goal.id]
-          const end = positions[goal.id]
-          if (!start || !end) return goal
+      if (rawT < 1) {
+        setGoals((currentGoals) =>
+          currentGoals.map((goal) => {
+            const start = startPositions[goal.id]
+            const end = positions[goal.id]
+            if (!start || !end) return goal
 
-          return {
-            ...goal,
-            x: start.x + (end.x - start.x) * t,
-            y: start.y + (end.y - start.y) * t,
-          }
-        })
-      )
+            return {
+              ...goal,
+              x: start.x + (end.x - start.x) * t,
+              y: start.y + (end.y - start.y) * t,
+            }
+          })
+        )
 
-      if (frame < totalFrames && rawT < 1) {
         requestAnimationFrame(tick)
       } else {
-        // Animation complete — snap to exact positions and persist to the API.
-        const finalGoals = goals.map((goal) => ({ ...goal, ...(positions[goal.id] ?? {}) }))
-        setGoals(finalGoals)
-        finalGoals.forEach((goal) => {
-          if (positions[goal.id]) updateGoal(goal.id, { x: goal.x, y: goal.y })
+        // Animation complete — snap to exact final positions via the state
+        // updater to avoid reading the stale closure-captured `goals` value.
+        setGoals((currentGoals) =>
+          currentGoals.map((goal) => ({ ...goal, ...(positions[goal.id] ?? {}) }))
+        )
+        Object.keys(positions).forEach((id) => {
+          updateGoal(id, { x: positions[id].x, y: positions[id].y })
         })
       }
     }
@@ -637,7 +635,10 @@ function PersonalPage() {
 
                   // Cubic Bezier control points offset horizontally by BEZIER_STRENGTH
                   // of the x-distance, creating gentle horizontal S-curves.
-                  const dx = (endX - startX) * BEZIER_STRENGTH
+                  // Use at least 60px of horizontal offset so curves stay readable
+                  // even when a child has been dragged to the left of its parent.
+                  const rawDx = (endX - startX) * BEZIER_STRENGTH
+                  const dx = rawDx > 0 ? Math.max(rawDx, 60) : Math.min(rawDx, -60)
                   const cp1x = startX + dx
                   const cp2x = endX - dx
 
