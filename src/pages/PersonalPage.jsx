@@ -53,10 +53,6 @@ function getLineage(goals, goal) {
   return path
 }
 
-function getDepth(goals, goal) {
-  return getLineage(goals, goal).length - 1
-}
-
 function getInitialPosition(goals, parentId) {
   if (parentId) {
     const parent = goals.find((goal) => goal.id === parentId)
@@ -491,7 +487,7 @@ function PersonalPage() {
               className="canvas-world"
               style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})` }}
             >
-              <svg className="canvas-links" height="2400" viewBox="0 0 2400 2400" width="2400">
+              <svg className="canvas-links" height="2400" overflow="visible" viewBox="0 0 2400 2400" width="2400">
                 {visibleGoals.map((goal) => {
                   const parent = goals.find((item) => item.id === goal.parentId)
                   if (!parent || !visibleIds.has(parent.id)) return null
