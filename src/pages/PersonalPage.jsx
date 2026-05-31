@@ -413,21 +413,38 @@ function PersonalPage() {
   }
 
   function autoLayout() {
-    let row = 0
-    const nextGoals = goals.map((goal) => {
-      const depth = getDepth(goals, goal)
-      const siblings = getChildren(goals, goal.parentId)
-      const siblingIndex = siblings.findIndex((item) => item.id === goal.id)
+    const positions = {}
+    const leafRow = [0]
 
-      if (siblingIndex === 0 || !goal.parentId) row += 1
+    function layoutNode(goalId, depth) {
+      const children = getChildren(goals, goalId)
 
-      return {
-        ...goal,
-        x: VIEWPORT_CENTER.x + depth * TREE_X_GAP,
-        y: 160 + row * TREE_Y_GAP + siblingIndex * 24,
+      if (children.length === 0) {
+        positions[goalId] = {
+          x: VIEWPORT_CENTER.x + depth * TREE_X_GAP,
+          y: 80 + leafRow[0] * TREE_Y_GAP,
+        }
+        leafRow[0]++
+        return positions[goalId].y
       }
+
+      const childYs = children.map((child) => layoutNode(child.id, depth + 1))
+      const minY = Math.min(...childYs)
+      const maxY = Math.max(...childYs)
+
+      positions[goalId] = {
+        x: VIEWPORT_CENTER.x + depth * TREE_X_GAP,
+        y: (minY + maxY) / 2,
+      }
+      return positions[goalId].y
+    }
+
+    getChildren(goals, null).forEach((root, i) => {
+      if (i > 0) leafRow[0]++
+      layoutNode(root.id, 0)
     })
 
+    const nextGoals = goals.map((goal) => ({ ...goal, ...(positions[goal.id] ?? {}) }))
     setGoals(nextGoals)
     nextGoals.forEach((goal) => updateGoal(goal.id, { x: goal.x, y: goal.y }))
   }

@@ -1,5 +1,5 @@
 .command-app {
-  grid-template-columns: 112px minmax(0, 1fr) 320px;
+  grid-template-columns: 144px minmax(0, 1fr) 320px;
 }
 
 .command-rail {
@@ -8,7 +8,8 @@
 }
 
 .command-rail-right {
-  overflow-y: auto;
+  justify-content: flex-start;
+  gap: 10px;
 }
 
 .control-stack,
@@ -131,11 +132,11 @@
 
 @media (max-width: 980px) {
   .command-app {
-    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-columns: 112px minmax(0, 1fr);
   }
 
   .command-rail-right {
-    width: min(320px, calc(100vw - 104px));
+    width: min(320px, calc(100vw - 128px));
   }
 }
 
