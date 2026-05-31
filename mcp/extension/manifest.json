@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "kai-planner",
   "display_name": "Kai Planner",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Read and edit your personal planner at kaihoward.com/personal — schedule, goals, tasks, and notes.",
   "long_description": "Connects Claude to your kaihoward.com/personal planner. Ask about your schedule and have Claude add, reschedule, re-prioritize, rearrange, complete, or delete goals and tasks, and read/update your scratch note. Talks to the Cloudflare Pages API through a Cloudflare Access service token.",
   "author": {

@@ -25,7 +25,17 @@ const API_KEY = process.env.KAI_API_KEY || ''
 const CF_ACCESS_CLIENT_ID = process.env.CF_ACCESS_CLIENT_ID || ''
 const CF_ACCESS_CLIENT_SECRET = process.env.CF_ACCESS_CLIENT_SECRET || ''
 
-const SERVER_INFO = { name: 'kai-planner', version: '1.0.0' }
+const SERVER_INFO = { name: 'kai-planner', version: '1.1.0' }
+
+// Surfaced to the client in the initialize response so the model knows, in every
+// session, what this connector is and when to reach for it.
+const SERVER_INSTRUCTIONS =
+  "This is 'Kai Planner' — Kai's personal productivity center at kaihoward.com/personal, and the source of truth " +
+  'for Kai\'s schedule, goals, tasks, deadlines, plans, and a freeform note (e.g. "freshman year plans", "this week", ' +
+  'the law-school track). Whenever Kai asks about their schedule, plans, goals, to-dos, or asks to add / change / ' +
+  'reschedule / prioritize / rearrange / organize / plan anything, USE THESE TOOLS by default — do not search files or ' +
+  'Google Drive and do not ask Kai to paste documents for these. For open-ended questions start with get_overview or ' +
+  'get_schedule, then drill in with list_goals / search_goals.'
 // Protocol versions we can actually speak, newest first. Used to negotiate in initialize.
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05']
 const LATEST_PROTOCOL = SUPPORTED_PROTOCOLS[0]
@@ -453,6 +463,7 @@ async function handleRequest(msg) {
         protocolVersion: SUPPORTED_PROTOCOLS.includes(requested) ? requested : LATEST_PROTOCOL,
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER_INFO,
+        instructions: SERVER_INSTRUCTIONS,
       })
     }
 
