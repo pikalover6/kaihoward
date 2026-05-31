@@ -21,8 +21,28 @@ const STATUS_LABELS = {
 const VIEWPORT_CENTER = { x: 540, y: 320 }
 const NODE_WIDTH = 220
 const NODE_HEIGHT = 108
+
+// ─── Layout parameters ────────────────────────────────────────────────────────
+// Legacy gap constants kept for getInitialPosition (used on new-node creation).
 const TREE_X_GAP = 320
 const TREE_Y_GAP = 168
+
+// Tidy-tree layout constants
+const LAYOUT_X_GAP = 340          // horizontal distance between depth layers
+const LAYOUT_Y_GAP = 30           // minimum vertical gap between sibling subtrees
+const LAYOUT_ROOT_PAD = 80        // extra vertical padding between separate root trees
+const LAYOUT_ORIGIN_X = 120       // left-edge x for depth-0 nodes
+const LAYOUT_ORIGIN_Y = 80        // top y offset for the entire layout
+
+// Bezier edge aesthetics
+const BEZIER_STRENGTH = 0.45      // 0 = straight, 1 = very curved (fraction of x-distance)
+
+// Smooth-animation constants
+const LAYOUT_ANIM_DURATION = 420  // ms for position interpolation
+
+// Aesthetic-cleanup pass
+const LAYOUT_RELAX_ITERATIONS = 8 // overlap-prevention relaxation passes
+const LAYOUT_OVERLAP_PAD = 12     // extra padding around node bounding box for overlap check
 
 function getChildren(goals, parentId) {
   return goals
@@ -409,40 +429,155 @@ function PersonalPage() {
   }
 
   function autoLayout() {
+    // ── Phase 1: Tidy-tree layout ─────────────────────────────────────────────
+    // Assign each node a position using a bottom-up subtree-size reservation
+    // approach (Reingold–Tilford / tidy-tree inspired).  Parents are centred
+    // vertically over the span of their children, so the layout feels organic.
+
     const positions = {}
-    const leafRow = [0]
 
-    function layoutNode(goalId, depth) {
+    // Returns the total vertical space (height) consumed by the subtree rooted
+    // at goalId, including LAYOUT_Y_GAP between siblings.
+    function subtreeHeight(goalId) {
       const children = getChildren(goals, goalId)
+      if (children.length === 0) return NODE_HEIGHT
 
-      if (children.length === 0) {
-        positions[goalId] = {
-          x: VIEWPORT_CENTER.x + depth * TREE_X_GAP,
-          y: 80 + leafRow[0] * TREE_Y_GAP,
-        }
-        leafRow[0]++
-        return positions[goalId].y
-      }
-
-      const childYs = children.map((child) => layoutNode(child.id, depth + 1))
-      const minY = Math.min(...childYs)
-      const maxY = Math.max(...childYs)
-
-      positions[goalId] = {
-        x: VIEWPORT_CENTER.x + depth * TREE_X_GAP,
-        y: (minY + maxY) / 2,
-      }
-      return positions[goalId].y
+      const childrenTotal = children.reduce((sum, child) => sum + subtreeHeight(child.id), 0)
+      const gaps = LAYOUT_Y_GAP * (children.length - 1)
+      return childrenTotal + gaps
     }
 
-    getChildren(goals, null).forEach((root, i) => {
-      if (i > 0) leafRow[0]++
-      layoutNode(root.id, 0)
+    // Place a subtree rooted at goalId so its vertical span is centred on
+    // `centreY`, at horizontal position corresponding to `depth`.
+    function placeSubtree(goalId, depth, centreY) {
+      positions[goalId] = {
+        x: LAYOUT_ORIGIN_X + depth * LAYOUT_X_GAP,
+        y: centreY - NODE_HEIGHT / 2,
+      }
+
+      const children = getChildren(goals, goalId)
+      if (children.length === 0) return
+
+      // Distribute children top-to-bottom within the available vertical span.
+      const totalHeight = children.reduce((sum, child) => sum + subtreeHeight(child.id), 0)
+        + LAYOUT_Y_GAP * (children.length - 1)
+
+      let cursor = centreY - totalHeight / 2
+
+      children.forEach((child) => {
+        const childHeight = subtreeHeight(child.id)
+        const childCentre = cursor + childHeight / 2
+        placeSubtree(child.id, depth + 1, childCentre)
+        cursor += childHeight + LAYOUT_Y_GAP
+      })
+    }
+
+    // Walk each root tree in order, stacking them top-to-bottom with
+    // LAYOUT_ROOT_PAD extra space between trees.
+    const roots = getChildren(goals, null)
+    let topCursor = LAYOUT_ORIGIN_Y
+
+    roots.forEach((root) => {
+      const height = subtreeHeight(root.id)
+      const centre = topCursor + height / 2
+      placeSubtree(root.id, 0, centre)
+      topCursor += height + LAYOUT_ROOT_PAD
     })
 
-    const nextGoals = goals.map((goal) => ({ ...goal, ...(positions[goal.id] ?? {}) }))
-    setGoals(nextGoals)
-    nextGoals.forEach((goal) => updateGoal(goal.id, { x: goal.x, y: goal.y }))
+    // ── Phase 2: Aesthetic cleanup pass ──────────────────────────────────────
+    // Run several relaxation iterations to push apart any nodes whose bounding
+    // boxes still overlap (can happen with very asymmetric trees).  We only
+    // shift nodes vertically to avoid disturbing the clean horizontal layers.
+
+    const ids = Object.keys(positions)
+
+    for (let iter = 0; iter < LAYOUT_RELAX_ITERATIONS; iter++) {
+      let moved = false
+
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          const a = positions[ids[i]]
+          const b = positions[ids[j]]
+
+          // Axis-aligned bounding-box overlap test (with extra padding).
+          const pw = NODE_WIDTH + LAYOUT_OVERLAP_PAD
+          const ph = NODE_HEIGHT + LAYOUT_OVERLAP_PAD
+
+          const overlapX = Math.abs(a.x - b.x) < pw
+          const overlapY = Math.abs(a.y - b.y) < ph
+
+          if (overlapX && overlapY) {
+            // Push apart along y only (horizontal layers are intentional).
+            const pushY = (ph - Math.abs(a.y - b.y)) / 2 + 1
+            if (a.y <= b.y) {
+              a.y -= pushY
+              b.y += pushY
+            } else {
+              a.y += pushY
+              b.y -= pushY
+            }
+            moved = true
+          }
+        }
+      }
+
+      if (!moved) break
+    }
+
+    // ── Phase 3: Smooth animation ─────────────────────────────────────────────
+    // Interpolate from each node's current position to its new layout position
+    // using a requestAnimationFrame loop so the transition feels calm and fluid
+    // rather than snapping instantly.
+
+    const startPositions = {}
+    goals.forEach((goal) => {
+      startPositions[goal.id] = {
+        x: goal.x ?? VIEWPORT_CENTER.x,
+        y: goal.y ?? VIEWPORT_CENTER.y,
+      }
+    })
+
+    const startTime = performance.now()
+
+    function easeInOut(t) {
+      // Cubic ease-in-out for a smooth, polished feel.
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    }
+
+    function tick() {
+      const elapsed = performance.now() - startTime
+      const rawT = Math.min(elapsed / LAYOUT_ANIM_DURATION, 1)
+      const t = easeInOut(rawT)
+
+      if (rawT < 1) {
+        setGoals((currentGoals) =>
+          currentGoals.map((goal) => {
+            const start = startPositions[goal.id]
+            const end = positions[goal.id]
+            if (!start || !end) return goal
+
+            return {
+              ...goal,
+              x: start.x + (end.x - start.x) * t,
+              y: start.y + (end.y - start.y) * t,
+            }
+          })
+        )
+
+        requestAnimationFrame(tick)
+      } else {
+        // Animation complete — snap to exact final positions via the state
+        // updater to avoid reading the stale closure-captured `goals` value.
+        setGoals((currentGoals) =>
+          currentGoals.map((goal) => ({ ...goal, ...(positions[goal.id] ?? {}) }))
+        )
+        Object.keys(positions).forEach((id) => {
+          updateGoal(id, { x: positions[id].x, y: positions[id].y })
+        })
+      }
+    }
+
+    requestAnimationFrame(tick)
   }
 
   function goalsForDay(day) {
@@ -492,15 +627,24 @@ function PersonalPage() {
                   const parent = goals.find((item) => item.id === goal.parentId)
                   if (!parent || !visibleIds.has(parent.id)) return null
 
+                  // Edge flows right-side of parent → left-side of child.
                   const startX = (parent.x ?? VIEWPORT_CENTER.x) + NODE_WIDTH
                   const startY = (parent.y ?? VIEWPORT_CENTER.y) + NODE_HEIGHT / 2
                   const endX = goal.x ?? VIEWPORT_CENTER.x
                   const endY = (goal.y ?? VIEWPORT_CENTER.y) + NODE_HEIGHT / 2
-                  const midX = startX + (endX - startX) / 2
+
+                  // Cubic Bezier control points offset horizontally by BEZIER_STRENGTH
+                  // of the x-distance, creating gentle horizontal S-curves.
+                  // Use at least 60px of horizontal offset so curves stay readable
+                  // even when a child has been dragged to the left of its parent.
+                  const rawDx = (endX - startX) * BEZIER_STRENGTH
+                  const dx = rawDx > 0 ? Math.max(rawDx, 60) : Math.min(rawDx, -60)
+                  const cp1x = startX + dx
+                  const cp2x = endX - dx
 
                   return (
                     <path
-                      d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
+                      d={`M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}`}
                       key={`${parent.id}-${goal.id}`}
                     />
                   )
