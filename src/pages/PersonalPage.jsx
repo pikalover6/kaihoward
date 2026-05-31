@@ -53,10 +53,6 @@ function getLineage(goals, goal) {
   return path
 }
 
-function getDepth(goals, goal) {
-  return getLineage(goals, goal).length - 1
-}
-
 function getInitialPosition(goals, parentId) {
   if (parentId) {
     const parent = goals.find((goal) => goal.id === parentId)
@@ -129,6 +125,8 @@ function PersonalPage() {
     status: 'planned',
     priority: 3,
     dueDate: '',
+    startAt: '',
+    endAt: '',
   })
   const [inspectorDraft, setInspectorDraft] = useState({
     title: '',
@@ -193,6 +191,8 @@ function PersonalPage() {
       status: 'planned',
       priority: parent ? Math.max(1, parent.priority - 1) : 3,
       dueDate: '',
+      startAt: '',
+      endAt: '',
     })
     setDraftOpen(true)
   }
@@ -214,6 +214,8 @@ function PersonalPage() {
       status: form.status,
       priority: Number(form.priority),
       dueDate: form.dueDate,
+      startAt: form.startAt,
+      endAt: form.endAt,
       startDate: '',
       sortOrder: goals.length + 1,
       collapsed: false,
@@ -407,28 +409,47 @@ function PersonalPage() {
   }
 
   function autoLayout() {
-    let row = 0
-    const nextGoals = goals.map((goal) => {
-      const depth = getDepth(goals, goal)
-      const siblings = getChildren(goals, goal.parentId)
-      const siblingIndex = siblings.findIndex((item) => item.id === goal.id)
+    const positions = {}
+    const leafRow = [0]
 
-      if (siblingIndex === 0 || !goal.parentId) row += 1
+    function layoutNode(goalId, depth) {
+      const children = getChildren(goals, goalId)
 
-      return {
-        ...goal,
-        x: VIEWPORT_CENTER.x + depth * TREE_X_GAP,
-        y: 160 + row * TREE_Y_GAP + siblingIndex * 24,
+      if (children.length === 0) {
+        positions[goalId] = {
+          x: VIEWPORT_CENTER.x + depth * TREE_X_GAP,
+          y: 80 + leafRow[0] * TREE_Y_GAP,
+        }
+        leafRow[0]++
+        return positions[goalId].y
       }
+
+      const childYs = children.map((child) => layoutNode(child.id, depth + 1))
+      const minY = Math.min(...childYs)
+      const maxY = Math.max(...childYs)
+
+      positions[goalId] = {
+        x: VIEWPORT_CENTER.x + depth * TREE_X_GAP,
+        y: (minY + maxY) / 2,
+      }
+      return positions[goalId].y
+    }
+
+    getChildren(goals, null).forEach((root, i) => {
+      if (i > 0) leafRow[0]++
+      layoutNode(root.id, 0)
     })
 
+    const nextGoals = goals.map((goal) => ({ ...goal, ...(positions[goal.id] ?? {}) }))
     setGoals(nextGoals)
     nextGoals.forEach((goal) => updateGoal(goal.id, { x: goal.x, y: goal.y }))
   }
 
   function goalsForDay(day) {
     const key = dateKey(day)
-    return goals.filter((goal) => goal.dueDate === key)
+    return goals
+      .filter((goal) => goal.dueDate === key || (goal.startAt && goal.startAt.slice(0, 10) === key))
+      .sort((a, b) => (a.startAt ?? '99').localeCompare(b.startAt ?? '99'))
   }
 
   const syncLabel = status === 'loading' ? 'syncing' : status === 'saving' ? 'saving' : status === 'offline' ? 'local' : 'synced'
@@ -546,7 +567,7 @@ function PersonalPage() {
                     <span>{day.getDate()}</span>
                     {dayGoals.map((goal) => (
                       <button key={goal.id} onClick={() => { setMode('canvas'); setSelectedId(goal.id) }} type="button">
-                        {goal.title}
+                        {goal.startAt ? `${goal.startAt.slice(11, 16)} ` : ''}{goal.title}
                       </button>
                     ))}
                   </div>
@@ -616,6 +637,14 @@ function PersonalPage() {
                 <input type="date" value={selectedGoal.dueDate ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { dueDate: event.target.value })} />
               </label>
               <label>
+                Scheduled start
+                <input type="datetime-local" value={selectedGoal.startAt ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { startAt: event.target.value })} />
+              </label>
+              <label>
+                Scheduled end
+                <input type="datetime-local" value={selectedGoal.endAt ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { endAt: event.target.value })} />
+              </label>
+              <label>
                 Priority
                 <input max="5" min="1" type="range" value={selectedGoal.priority} onChange={(event) => updateGoal(selectedGoal.id, { priority: Number(event.target.value) })} />
               </label>
@@ -663,6 +692,8 @@ function PersonalPage() {
                 {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
               <input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} />
+              <input type="datetime-local" title="Scheduled start" value={form.startAt} onChange={(event) => setForm({ ...form, startAt: event.target.value })} />
+              <input type="datetime-local" title="Scheduled end" value={form.endAt} onChange={(event) => setForm({ ...form, endAt: event.target.value })} />
               <input max="5" min="1" type="range" value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} />
             </div>
             <button className="prime" type="submit">Create</button>

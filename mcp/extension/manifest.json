@@ -1,0 +1,71 @@
+{
+  "manifest_version": "0.3",
+  "name": "kai-planner",
+  "display_name": "Kai Planner",
+  "version": "1.1.0",
+  "description": "Read and edit your personal planner at kaihoward.com/personal — schedule, goals, tasks, and notes.",
+  "long_description": "Connects Claude to your kaihoward.com/personal planner. Ask about your schedule and have Claude add, reschedule, re-prioritize, rearrange, complete, or delete goals and tasks, and read/update your scratch note. Talks to the Cloudflare Pages API through a Cloudflare Access service token.",
+  "author": {
+    "name": "Kai Howard",
+    "url": "https://kaihoward.com"
+  },
+  "homepage": "https://kaihoward.com/personal",
+  "server": {
+    "type": "node",
+    "entry_point": "server/kai-planner-mcp.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/kai-planner-mcp.mjs"],
+      "env": {
+        "KAI_BASE_URL": "${user_config.base_url}",
+        "KAI_API_KEY": "${user_config.api_key}",
+        "CF_ACCESS_CLIENT_ID": "${user_config.cf_client_id}",
+        "CF_ACCESS_CLIENT_SECRET": "${user_config.cf_client_secret}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "get_overview", "description": "Snapshot of the whole planner plus today's items and the note" },
+    { "name": "list_goals", "description": "The full goal/task tree" },
+    { "name": "get_schedule", "description": "Items in a date range, sorted by time" },
+    { "name": "search_goals", "description": "Find goals by text" },
+    { "name": "create_goal", "description": "Add a goal/task/event" },
+    { "name": "update_goal", "description": "Edit a goal (rename, reschedule, reprioritize, status)" },
+    { "name": "complete_goal", "description": "Mark a goal done or reopen it" },
+    { "name": "move_goal", "description": "Re-nest a goal under a different parent" },
+    { "name": "reorder_goals", "description": "Set the order of sibling goals" },
+    { "name": "delete_goal", "description": "Delete a goal and its branch" },
+    { "name": "get_note", "description": "Read the scratch note" },
+    { "name": "update_note", "description": "Replace the scratch note" }
+  ],
+  "user_config": {
+    "api_key": {
+      "type": "string",
+      "title": "Planner API Key",
+      "description": "The KAI_API_KEY for the planner API.",
+      "sensitive": true,
+      "required": true
+    },
+    "cf_client_id": {
+      "type": "string",
+      "title": "Cloudflare Access Client ID",
+      "description": "The Access service-token Client ID (ends in .access).",
+      "sensitive": false,
+      "required": true
+    },
+    "cf_client_secret": {
+      "type": "string",
+      "title": "Cloudflare Access Client Secret",
+      "description": "The Access service-token Client Secret.",
+      "sensitive": true,
+      "required": true
+    },
+    "base_url": {
+      "type": "string",
+      "title": "API Base URL",
+      "description": "Planner API base URL. Leave the default unless you know otherwise.",
+      "required": false,
+      "default": "https://kaihoward.com/personal/api"
+    }
+  }
+}

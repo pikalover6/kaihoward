@@ -17,6 +17,8 @@ type GoalRow = {
   x: number | null
   y: number | null
   collapsed: number
+  start_at: string | null
+  end_at: string | null
   created_at: string
   updated_at: string
 }
@@ -40,9 +42,20 @@ function toGoal(row: GoalRow) {
     x: row.x,
     y: row.y,
     collapsed: row.collapsed === 1,
+    startAt: row.start_at,
+    endAt: row.end_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+// Accepts "" / null / undefined as "clear it", and a non-empty string as the value.
+function normalizeDateTime(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
 }
 
 function normalizeGoalInput(body: unknown) {
@@ -78,6 +91,8 @@ function normalizeGoalInput(body: unknown) {
       x: typeof input.x === 'number' && Number.isFinite(input.x) ? input.x : null,
       y: typeof input.y === 'number' && Number.isFinite(input.y) ? input.y : null,
       collapsed: typeof input.collapsed === 'boolean' && input.collapsed,
+      startAt: normalizeDateTime(input.startAt) ?? null,
+      endAt: normalizeDateTime(input.endAt) ?? null,
     },
   }
 }
@@ -93,7 +108,7 @@ async function readJson(request: Request) {
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const result = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, start_at, end_at, created_at, updated_at
       FROM life_goals
       ORDER BY sort_order ASC, created_at ASC
     `)
@@ -121,9 +136,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   await context.env.DB
     .prepare(`
       INSERT INTO life_goals (
-        id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+        id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, start_at, end_at, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `)
     .bind(
       id,
@@ -140,12 +155,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       goal.x,
       goal.y,
       goal.collapsed ? 1 : 0,
+      goal.startAt,
+      goal.endAt,
     )
     .run()
 
   const row = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, start_at, end_at, created_at, updated_at
       FROM life_goals
       WHERE id = ?
     `)
@@ -175,7 +192,7 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
 
   const current = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, start_at, end_at, created_at, updated_at
       FROM life_goals
       WHERE id = ?
     `)
@@ -186,8 +203,11 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
     return Response.json({ error: 'Goal not found' }, { status: 404 })
   }
 
+  const startAtInput = normalizeDateTime(input.startAt)
+  const endAtInput = normalizeDateTime(input.endAt)
+
   const next = {
-    parentId: typeof input.parentId === 'string' ? input.parentId : current.parent_id,
+    parentId: typeof input.parentId === 'string' ? (input.parentId || null) : current.parent_id,
     title: typeof input.title === 'string' && input.title.trim() ? input.title.trim() : current.title,
     description: typeof input.description === 'string' ? input.description.trim() : current.description,
     horizon: typeof input.horizon === 'string' && HORIZONS.has(input.horizon) ? input.horizon : current.horizon,
@@ -202,13 +222,15 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
     x: typeof input.x === 'number' && Number.isFinite(input.x) ? input.x : current.x,
     y: typeof input.y === 'number' && Number.isFinite(input.y) ? input.y : current.y,
     collapsed: typeof input.collapsed === 'boolean' ? input.collapsed : current.collapsed === 1,
+    startAt: startAtInput === undefined ? current.start_at : startAtInput,
+    endAt: endAtInput === undefined ? current.end_at : endAtInput,
   }
 
   await context.env.DB
     .prepare(`
       UPDATE life_goals
       SET parent_id = ?, title = ?, description = ?, horizon = ?, duration_label = ?, status = ?, priority = ?, start_date = ?, due_date = ?,
-          sort_order = ?, x = ?, y = ?, collapsed = ?, updated_at = datetime('now')
+          sort_order = ?, x = ?, y = ?, collapsed = ?, start_at = ?, end_at = ?, updated_at = datetime('now')
       WHERE id = ?
     `)
     .bind(
@@ -225,13 +247,15 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
       next.x,
       next.y,
       next.collapsed ? 1 : 0,
+      next.startAt,
+      next.endAt,
       id,
     )
     .run()
 
   const row = await context.env.DB
     .prepare(`
-      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, created_at, updated_at
+      SELECT id, parent_id, title, description, horizon, duration_label, status, priority, start_date, due_date, sort_order, x, y, collapsed, start_at, end_at, created_at, updated_at
       FROM life_goals
       WHERE id = ?
     `)
