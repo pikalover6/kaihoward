@@ -1042,8 +1042,8 @@
 
 .canvas-links path {
   fill: none;
-  stroke: rgba(200, 210, 224, 0.24);
-  stroke-width: 1.2;
+  stroke: rgba(200, 210, 224, 0.58);
+  stroke-width: 1.6;
 }
 
 .canvas-node {
