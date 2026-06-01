@@ -1,0 +1,6 @@
+GITHUB_CLIENT_ID=<your github oauth app client id>
+GITHUB_CLIENT_SECRET=<your github oauth app client secret>
+COOKIE_ENCRYPTION_KEY=<random string: openssl rand -hex 32>
+KAI_API_KEY=<the planner API key>
+CF_ACCESS_CLIENT_ID=<cloudflare access service-token client id>
+CF_ACCESS_CLIENT_SECRET=<cloudflare access service-token client secret>
