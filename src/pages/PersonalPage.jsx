@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import PushControls from '../PushControls.jsx'
 
 const DURATION_FALLBACKS = {
   life: 'Lifetime',
@@ -605,6 +606,8 @@ function PersonalPage() {
           <strong>{activeGoals.length}</strong>
           <span>active</span>
         </div>
+
+        <PushControls />
       </aside>
 
       <main className="command-stage">

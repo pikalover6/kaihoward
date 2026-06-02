@@ -12,6 +12,9 @@ declare namespace Cloudflare {
 		KAI_API_KEY: string;
 		CF_ACCESS_CLIENT_ID: string;
 		CF_ACCESS_CLIENT_SECRET: string;
+		VAPID_PUBLIC_KEY: string;
+		VAPID_PRIVATE_KEY: string;
+		VAPID_SUBJECT: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

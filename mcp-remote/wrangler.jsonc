@@ -31,7 +31,12 @@
     }
   ],
   "vars": {
-    "KAI_BASE_URL": "https://kaihoward.com/personal/api"
+    "KAI_BASE_URL": "https://kaihoward.com/personal/api",
+    "VAPID_SUBJECT": "mailto:kaihoward106@gmail.com",
+    "VAPID_PUBLIC_KEY": "BE_Nq51fwZYwrKuHnV2CL_81qDU9P-X5HO2N4yFKF2UnTdDqm5oOt4suhc78DvLxzMp3u2aySImZQ1wC88GO6aI"
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
   },
   "observability": {
     "enabled": true

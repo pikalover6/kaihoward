@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
 import { GitHubHandler } from "./github-handler";
+import { runReminders, sendTest } from "./reminders";
 
 // Auth context produced by the GitHub OAuth flow, available as this.props.
 type Props = {
@@ -352,7 +353,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
   }
 }
 
-export default new OAuthProvider({
+const oauthProvider = new OAuthProvider({
   apiHandler: MyMCP.serve("/mcp") as any,
   apiRoute: "/mcp",
   authorizeEndpoint: "/authorize",
@@ -360,3 +361,21 @@ export default new OAuthProvider({
   defaultHandler: GitHubHandler as any,
   tokenEndpoint: "/token",
 });
+
+// Wrap the OAuth handler so the same Worker can also serve a key-guarded
+// test-push endpoint and run the reminder cron.
+export default {
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> | Response {
+    const url = new URL(request.url);
+    if (url.pathname === "/internal/send-test") {
+      if (url.searchParams.get("key") !== env.KAI_API_KEY) return new Response("forbidden", { status: 403 });
+      return sendTest(env)
+        .then((r) => Response.json(r))
+        .catch((e: any) => Response.json({ error: String(e?.message ?? e) }, { status: 500 }));
+    }
+    return (oauthProvider as any).fetch(request, env, ctx);
+  },
+  scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): void {
+    ctx.waitUntil(runReminders(env));
+  },
+};
