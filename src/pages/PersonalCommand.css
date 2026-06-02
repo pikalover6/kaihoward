@@ -155,7 +155,338 @@
 }
 
 @media (max-width: 640px) {
-  .command-rail-left {
-    align-items: start;
+  /* ── Override App.css grid layout → full flex column ── */
+  .command-app {
+    display: flex !important;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+    grid-template-columns: unset !important;
+    grid-template-rows: unset !important;
+  }
+
+  /* Hide both desktop rails */
+  .command-rail {
+    display: none !important;
+  }
+
+  /* Main stage fills all remaining space between topbar and tabbar */
+  .command-stage {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto !important;
+    position: relative;
+  }
+
+  /* Canvas gets touch-action none so we can handle custom pan gestures */
+  .canvas-shell,
+  .calendar-shell {
+    height: 100% !important;
+    touch-action: none;
+  }
+
+  /* Calendar needs browser-native scroll since it doesn't have custom touch handlers */
+  .calendar-shell {
+    overflow-x: auto;
+    touch-action: pan-x pan-y;
+  }
+
+  /* ── Mobile top bar ── */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 14px;
+    height: 50px;
+    flex-shrink: 0;
+    background: #080a0e;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    z-index: 5;
+  }
+
+  .mobile-topbar-brand {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #e8ecf3;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .mobile-topbar-status {
+    flex: 1;
+    text-align: center;
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.32);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-topbar-new {
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 800;
+    min-height: 34px;
+    padding: 0 14px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.07);
+    color: #e8ecf3;
+    cursor: pointer;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+  }
+
+  .mobile-topbar-new:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  /* ── Mobile bottom tab bar ── */
+  .mobile-tabs {
+    display: flex;
+    height: 54px;
+    flex-shrink: 0;
+    background: #080a0e;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    z-index: 5;
+  }
+
+  .mobile-tabs button {
+    flex: 1;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    transition: color 0.12s, background 0.12s;
+  }
+
+  .mobile-tabs button.is-active {
+    color: #e8ecf3;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  /* ── Floating zoom controls (graph mode, top-right of canvas) ── */
+  .zoom-float {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 5px;
+    z-index: 6;
+  }
+
+  .zoom-float button {
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 800;
+    min-height: 34px;
+    min-width: 34px;
+    padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(8, 10, 14, 0.88);
+    color: #e8ecf3;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .zoom-float button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  /* ── Mobile list view ── */
+  .mobile-list {
+    height: 100%;
+    overflow-y: auto;
+    padding: 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-list-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 10px 16px;
+    border-top: 1px solid transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    background: transparent;
+    width: 100%;
+    transition: background 0.1s;
+  }
+
+  .mobile-list-item.is-selected {
+    background: rgba(255, 255, 255, 0.06);
+    border-top-color: rgba(255, 255, 255, 0.07);
+    border-bottom-color: rgba(255, 255, 255, 0.07);
+  }
+
+  .mobile-list-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+  }
+
+  .mobile-list-item:active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .mobile-list-check {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.68rem;
+    font-weight: 900;
+    color: #050506;
+    cursor: pointer;
+  }
+
+  .mobile-list-item.status-done .mobile-list-check {
+    background: #d9f4df;
+    border-color: #d9f4df;
+  }
+
+  .mobile-list-title {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #e8ecf3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .mobile-list-item.status-done .mobile-list-title {
+    opacity: 0.45;
+    text-decoration: line-through;
+  }
+
+  .mobile-list-meta {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.3);
+    text-transform: uppercase;
+  }
+
+  .mobile-list-status {
+    display: inline-block;
+    width: 3px;
+    height: 28px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    background: #8a96a8;
+  }
+
+  .mobile-list-item.status-active .mobile-list-status { background: #f4f7fb; }
+  .mobile-list-item.status-blocked .mobile-list-status { background: #b46c38; }
+  .mobile-list-item.status-done .mobile-list-status { background: #6f8d75; }
+
+  /* ── Bottom sheet ── */
+  .bottom-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.52);
+  }
+
+  .bottom-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 21;
+    max-height: 82dvh;
+    overflow-y: auto;
+    border-radius: 18px 18px 0 0;
+    background: #0f1117;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 0;
+    -webkit-overflow-scrolling: touch;
+    animation: sheet-slide-up 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  @keyframes sheet-slide-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  .sheet-handle {
+    display: flex;
+    justify-content: center;
+    padding: 12px 0 4px;
+    cursor: pointer;
+  }
+
+  .sheet-handle i {
+    display: block;
+    width: 38px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .sheet-inner {
+    padding: 4px 18px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .sheet-path {
+    font-size: 0.65rem;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.35);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .sheet-row-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  /* Make draft panel full-screen sheet on mobile */
+  .draft-backdrop {
+    align-items: flex-end;
+  }
+
+  .draft-panel {
+    width: 100%;
+    max-height: 92dvh;
+    overflow-y: auto;
+    border-radius: 18px 18px 0 0;
+    -webkit-overflow-scrolling: touch;
   }
 }

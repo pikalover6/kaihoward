@@ -137,6 +137,8 @@ function PersonalPage() {
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 0.9 })
   const [dragging, setDragging] = useState(null)
   const [draftOpen, setDraftOpen] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches)
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [form, setForm] = useState({
     title: '',
@@ -200,6 +202,14 @@ function PersonalPage() {
   // Keep focused inspector text stable while async saves update the selected goal.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGoal?.id])
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)')
+    setIsMobile(mq.matches)
+    const handler = (e) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   function openDraft(parentId = '') {
     const parent = goals.find((goal) => goal.id === parentId)
@@ -429,6 +439,27 @@ function PersonalPage() {
     setViewport({ x: 0, y: 0, scale: 0.9 })
   }
 
+  function beginTouchPan(event) {
+    if (event.touches.length !== 1) return
+    if (event.target.closest('.canvas-node') || event.target.closest('.zoom-float') || event.target.closest('.blank-slate')) return
+    const touch = event.touches[0]
+    setDragging({ type: 'pan', startX: touch.clientX, startY: touch.clientY, origin: viewport })
+  }
+
+  function moveTouchPan(event) {
+    if (!dragging || dragging.type !== 'pan' || event.touches.length !== 1) return
+    const touch = event.touches[0]
+    setViewport({
+      ...dragging.origin,
+      x: dragging.origin.x + touch.clientX - dragging.startX,
+      y: dragging.origin.y + touch.clientY - dragging.startY,
+    })
+  }
+
+  function endTouchPan() {
+    setDragging(null)
+  }
+
   function autoLayout() {
     // ── Phase 1: Tidy-tree layout ─────────────────────────────────────────────
     // Assign each node a position using a bottom-up subtree-size reservation
@@ -592,6 +623,17 @@ function PersonalPage() {
 
   return (
     <div className="command-app">
+
+      {/* ── Mobile top bar ─────────────────────────────────────────── */}
+      {isMobile && (
+        <header className="mobile-topbar">
+          <span className="mobile-topbar-brand">KH Personal</span>
+          <span className="mobile-topbar-status">{syncLabel} · {goals.length} nodes</span>
+          <button className="mobile-topbar-new" onClick={() => openDraft()} type="button">+ New</button>
+        </header>
+      )}
+
+      {/* ── Desktop left rail (hidden on mobile via CSS) ────────────── */}
       <aside className="command-rail command-rail-left">
         <div className="control-stack chrome-control">
           <button className={mode === 'canvas' ? 'is-active' : ''} onClick={() => setMode('canvas')} type="button">Graph</button>
@@ -610,6 +652,7 @@ function PersonalPage() {
         <PushControls />
       </aside>
 
+      {/* ── Main content stage ──────────────────────────────────────── */}
       <main className="command-stage">
         {mode === 'canvas' ? (
           <section
@@ -618,6 +661,9 @@ function PersonalPage() {
             onMouseLeave={endDrag}
             onMouseMove={moveDrag}
             onMouseUp={endDrag}
+            onTouchEnd={endTouchPan}
+            onTouchMove={moveTouchPan}
+            onTouchStart={beginTouchPan}
             onWheel={handleWheel}
             ref={canvasRef}
           >
@@ -670,7 +716,11 @@ function PersonalPage() {
                   >
                     {goal.status === 'done' ? '✓' : ''}
                   </button>
-                  <button className="node-hit" onClick={() => setSelectedId(goal.id)} type="button">
+                  <button
+                    className="node-hit"
+                    onClick={() => { setSelectedId(goal.id); if (isMobile) setSheetOpen(true) }}
+                    type="button"
+                  >
                     <span>{durationCopy(goal)}</span>
                     <strong>{goal.title}</strong>
                     <small><b>{statusCopy(goal.status)}</b> / P{goal.priority}</small>
@@ -695,8 +745,54 @@ function PersonalPage() {
                 <button onClick={() => openDraft()} type="button">Create first node</button>
               </div>
             )}
+
+            {/* Floating zoom controls — only visible on mobile */}
+            {isMobile && (
+              <div className="zoom-float">
+                <button onClick={() => zoomBy(0.12)} type="button">+</button>
+                <button onClick={() => zoomBy(-0.12)} type="button">−</button>
+                <button onClick={autoLayout} disabled={goals.length === 0} type="button">⊞</button>
+              </div>
+            )}
           </section>
+        ) : mode === 'list' ? (
+          /* ── Mobile list view ─────────────────────────────────────── */
+          <div className="mobile-list">
+            {flatGoals.length === 0 ? (
+              <div className="blank-slate chrome-control">
+                <p>Empty system</p>
+                <button onClick={() => openDraft()} type="button">Create first node</button>
+              </div>
+            ) : (
+              flatGoals.map((goal) => (
+                <div
+                  className={`mobile-list-item status-${goal.status} ${selectedId === goal.id ? 'is-selected' : ''}`}
+                  key={goal.id}
+                  style={{ paddingLeft: `${16 + goal.depth * 18}px` }}
+                >
+                  <span className="mobile-list-status" />
+                  <button
+                    aria-label={goal.status === 'done' ? 'Mark active' : 'Mark complete'}
+                    className="mobile-list-check"
+                    onClick={() => toggleDone(goal)}
+                    type="button"
+                  >
+                    {goal.status === 'done' ? '✓' : ''}
+                  </button>
+                  <button
+                    className="mobile-list-content"
+                    onClick={() => { setSelectedId(goal.id); setSheetOpen(true) }}
+                    type="button"
+                  >
+                    <span className="mobile-list-title">{goal.title}</span>
+                    <span className="mobile-list-meta">{durationCopy(goal)} · P{goal.priority}</span>
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         ) : (
+          /* ── Calendar view ────────────────────────────────────────── */
           <section className="calendar-shell">
             <div className="calendar-top chrome-control">
               <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} type="button">Prev</button>
@@ -713,7 +809,15 @@ function PersonalPage() {
                   <div className={`calendar-cell ${muted ? 'is-muted' : ''}`} key={day.toISOString()}>
                     <span>{day.getDate()}</span>
                     {dayGoals.map((goal) => (
-                      <button key={goal.id} onClick={() => { setMode('canvas'); setSelectedId(goal.id) }} type="button">
+                      <button
+                        key={goal.id}
+                        onClick={() => {
+                          setMode('canvas')
+                          setSelectedId(goal.id)
+                          if (isMobile) setSheetOpen(true)
+                        }}
+                        type="button"
+                      >
                         {goal.startAt ? `${goal.startAt.slice(11, 16)} ` : ''}{goal.title}
                       </button>
                     ))}
@@ -725,6 +829,7 @@ function PersonalPage() {
         )}
       </main>
 
+      {/* ── Desktop right rail (hidden on mobile via CSS) ────────────── */}
       <aside className="command-rail command-rail-right">
         <div className="control-stack chrome-control">
           <button onClick={() => zoomBy(0.12)} type="button">Zoom +</button>
@@ -804,6 +909,16 @@ function PersonalPage() {
         </div>
       </aside>
 
+      {/* ── Mobile bottom tab bar ──────────────────────────────────────── */}
+      {isMobile && (
+        <nav className="mobile-tabs">
+          <button className={mode === 'canvas' ? 'is-active' : ''} onClick={() => setMode('canvas')} type="button">Graph</button>
+          <button className={mode === 'list' ? 'is-active' : ''} onClick={() => setMode('list')} type="button">List</button>
+          <button className={mode === 'calendar' ? 'is-active' : ''} onClick={() => setMode('calendar')} type="button">Calendar</button>
+        </nav>
+      )}
+
+      {/* ── Draft / new goal panel ─────────────────────────────────────── */}
       {draftOpen && (
         <div className="draft-backdrop">
           <form className="draft-panel chrome-control" onSubmit={createGoal}>
@@ -846,6 +961,96 @@ function PersonalPage() {
             <button className="prime" type="submit">Create</button>
           </form>
         </div>
+      )}
+
+      {/* ── Mobile bottom sheet inspector ─────────────────────────────── */}
+      {isMobile && sheetOpen && selectedGoal && (
+        <>
+          <div className="bottom-sheet-backdrop" onClick={() => setSheetOpen(false)} />
+          <div className="bottom-sheet">
+            <div className="sheet-handle" onClick={() => setSheetOpen(false)}>
+              <i />
+            </div>
+            <div className="sheet-inner">
+              <div className="sheet-path">
+                {getLineage(goals, selectedGoal).map((goal) => goal.title).join(' / ')}
+              </div>
+              <button
+                className={`completion-toggle ${selectedGoal.status === 'done' ? 'is-complete' : ''}`}
+                onClick={() => toggleDone(selectedGoal)}
+                type="button"
+              >
+                <i>{selectedGoal.status === 'done' ? '✓' : ''}</i>
+                {selectedGoal.status === 'done' ? 'Complete' : 'Mark complete'}
+              </button>
+              <input
+                value={inspectorDraft.title}
+                onBlur={commitInspectorDraft}
+                onChange={(event) => setInspectorDraft((draft) => ({ ...draft, title: event.target.value }))}
+                onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
+                placeholder="Title"
+              />
+              <select
+                value={selectedGoal.status}
+                onChange={(event) => updateGoal(selectedGoal.id, { status: event.target.value })}
+              >
+                {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+              <label>
+                Duration
+                <input
+                  placeholder="e.g. 45 min, 3 weeks, Spring 2027"
+                  value={inspectorDraft.durationLabel}
+                  onBlur={commitInspectorDraft}
+                  onChange={(event) => setInspectorDraft((draft) => ({ ...draft, durationLabel: event.target.value }))}
+                  onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
+                />
+              </label>
+              <label>
+                Due
+                <input
+                  type="date"
+                  value={selectedGoal.dueDate ?? ''}
+                  onChange={(event) => updateGoal(selectedGoal.id, { dueDate: event.target.value })}
+                />
+              </label>
+              <label>
+                Priority
+                <input
+                  max="5"
+                  min="1"
+                  type="range"
+                  value={selectedGoal.priority}
+                  onChange={(event) => updateGoal(selectedGoal.id, { priority: Number(event.target.value) })}
+                />
+              </label>
+              <textarea
+                onBlur={commitInspectorDraft}
+                onChange={(event) => setInspectorDraft((draft) => ({ ...draft, description: event.target.value }))}
+                placeholder="Notes"
+                rows={3}
+                value={inspectorDraft.description}
+              />
+              <div className="sheet-row-actions">
+                <button
+                  onClick={() => { setSheetOpen(false); openDraft(selectedGoal.id) }}
+                  type="button"
+                >
+                  + Sub-goal
+                </button>
+                <button
+                  className="danger"
+                  onClick={() => { deleteGoal(selectedGoal.id); setSheetOpen(false) }}
+                  type="button"
+                >
+                  Delete ×
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )
