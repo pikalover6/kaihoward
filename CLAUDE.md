@@ -118,3 +118,35 @@ Install Extension…**; it prompts for the secrets (stored in the OS keychain).
   API with the service token + API key, and/or run `node mcp/smoke-test.mjs`
   (set `KAI_API_KEY`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`).
 - Keep secrets out of committed files (this repo is public).
+
+## Remote MCP server (`mcp-remote/`) — Claude on phone/web/desktop
+
+A Cloudflare **Worker** (`kai-planner-mcp`, based on Cloudflare's
+remote-mcp-github-oauth template: `@cloudflare/workers-oauth-provider` + `agents`
+McpAgent) serving the same 12 tools over Streamable HTTP at
+`https://kai-planner-mcp.pikalover666666.workers.dev/mcp`. Auth = **GitHub OAuth**
+(OAuth app client id `Ov23lim1wZwfDZ1HZD6z`, allowlisted to login `pikalover6` in
+`src/index.ts`). Tools call `/personal/api` with the service token (so no D1
+binding). Bindings: Durable Object `MCP_OBJECT` (MyMCP), KV `OAUTH_KV`
+(`798136fe663d4ebcaef6b73161931761`, also used for reminder de-dup). Add it in
+Claude at **Customize → Connectors → Add custom connector** (the `/mcp` URL); leave
+the OAuth fields blank (dynamic client registration). Configured on web → syncs to
+mobile. Deploy: `cd mcp-remote && npx wrangler deploy` (needs a CF token with
+Workers Scripts + KV edit). Worker secrets: `GITHUB_CLIENT_ID/SECRET`,
+`COOKIE_ENCRYPTION_KEY`, `KAI_API_KEY`, `CF_ACCESS_CLIENT_ID/SECRET`,
+`VAPID_PRIVATE_KEY`.
+
+## Web-push reminders (Phase B)
+
+- Frontend PWA: `public/manifest.webmanifest`, `public/sw.js` (push +
+  notificationclick), icons (`scripts/gen-icons.mjs`), PWA tags in `index.html`,
+  and `src/PushControls.jsx` (Enable reminders → subscribe, stores
+  subscription+timezone). iOS needs Add-to-Home-Screen to allow push.
+- API: `functions/personal/api/push.ts` stores/lists/deletes subscriptions in
+  D1 `push_subscriptions` (lazy `CREATE TABLE`; migration 0006). `?all=1` lists
+  them for the Worker.
+- Sender: the same Worker's `scheduled()` cron (`* * * * *`, `src/reminders.ts`)
+  sends web push for upcoming `start_at` (≤10 min before) and due-today items,
+  timezone from the latest subscription, de-dup keys `rem:*` in KV. VAPID public
+  key is in `wrangler.jsonc` vars + `PushControls.jsx`; private key is a secret.
+  Manual test: `POST /internal/send-test?key=<KAI_API_KEY>`.
