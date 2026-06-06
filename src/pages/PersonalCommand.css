@@ -490,3 +490,463 @@
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* ── Week calendar ─────────────────────────────────────────────────────────── */
+
+.week-shell {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Fixed header: day-name buttons */
+.week-header {
+  display: grid;
+  grid-template-columns: 48px repeat(7, 1fr);
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.week-gutter-spacer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.25);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.week-day-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  position: relative;
+}
+
+.week-day-head:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.week-day-head.is-today {
+  color: #e8ecf3;
+}
+
+.week-day-head.is-expanded {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8ecf3;
+}
+
+.week-day-name {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.week-day-num {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.week-day-head.is-today .week-day-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e8ecf3;
+  color: #050506;
+}
+
+.week-day-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 0.55rem;
+  font-weight: 900;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Day expand panel */
+.week-day-expand {
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 10px 14px 12px;
+  animation: expand-drop 0.18s ease;
+}
+
+@keyframes expand-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.week-expand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.week-expand-header strong {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #e8ecf3;
+  letter-spacing: 0.02em;
+}
+
+.week-expand-header button {
+  font: inherit;
+  font-size: 0.9rem;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.week-expand-header button:hover {
+  color: #e8ecf3;
+}
+
+.week-expand-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.week-expand-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  font: inherit;
+  font-size: 0.75rem;
+  color: #e8ecf3;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+
+.week-expand-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.week-expand-time {
+  font-size: 0.65rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.04em;
+  min-width: 28px;
+}
+
+.week-expand-title {
+  font-weight: 700;
+}
+
+.week-expand-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot-planned  { background: #8a96a8; }
+.status-dot-active   { background: #f4f7fb; }
+.status-dot-blocked  { background: #b46c38; }
+.status-dot-done     { background: #6f8d75; }
+
+.week-expand-empty {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.3);
+  font-style: italic;
+}
+
+.week-expand-add {
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+
+.week-expand-add:hover {
+  color: #e8ecf3;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Month view day expand panel — anchored to bottom of calendar */
+.month-day-expand {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #0f1117;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 0;
+  z-index: 10;
+}
+
+.month-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+/* All-day strip */
+.week-allday-row {
+  display: grid;
+  grid-template-columns: 48px repeat(7, 1fr);
+  flex-shrink: 0;
+  min-height: 28px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.week-allday-label {
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.week-allday-cell {
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 3px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.week-allday-chip {
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 2px 5px;
+  border: 0;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8ecf3;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  letter-spacing: 0.02em;
+}
+
+.week-allday-chip.status-done {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+/* Scrollable time grid */
+.week-scroll {
+  flex: 1 1 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: 48px repeat(7, 1fr);
+  position: relative;
+}
+
+.week-time-col {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.week-hour-label {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 3px 8px 0 0;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.22);
+  letter-spacing: 0.05em;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.week-day-col {
+  position: relative;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.week-day-col.is-today {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.week-hour-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  pointer-events: none;
+}
+
+/* Time-block cards */
+.week-block {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  font: inherit;
+  color: #e8ecf3;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.1s;
+  z-index: 2;
+}
+
+.week-block:hover,
+.week-block.is-selected {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.week-block.status-active {
+  border-color: rgba(235, 241, 249, 0.4);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.week-block.status-blocked {
+  border-color: rgba(213, 129, 72, 0.5);
+  background: rgba(180, 108, 56, 0.14);
+}
+
+.week-block.status-done {
+  border-color: rgba(111, 141, 117, 0.4);
+  background: rgba(95, 135, 104, 0.1);
+  opacity: 0.6;
+}
+
+.week-block-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.week-block-time {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Month view tweaks */
+.calendar-day-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background 0.1s;
+  flex-shrink: 0;
+}
+
+.calendar-day-num:hover,
+.calendar-day-num.is-expanded {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.calendar-cell.is-today .calendar-day-num {
+  background: #e8ecf3;
+  color: #050506;
+}
+
+.calendar-goal-chip {
+  font: inherit;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 5px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8ecf3;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 2px;
+  transition: background 0.1s;
+}
+
+.calendar-goal-chip:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.calendar-goal-chip.status-done {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+/* Inspector: start field row with Today shortcut */
+.inspector-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.inspector-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.inspector-row button {
+  flex-shrink: 0;
+  width: auto !important;
+  padding: 0 8px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
