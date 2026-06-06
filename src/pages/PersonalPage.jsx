@@ -23,27 +23,26 @@ const VIEWPORT_CENTER = { x: 540, y: 320 }
 const NODE_WIDTH = 220
 const NODE_HEIGHT = 108
 
-// ─── Layout parameters ────────────────────────────────────────────────────────
-// Legacy gap constants kept for getInitialPosition (used on new-node creation).
 const TREE_X_GAP = 320
 const TREE_Y_GAP = 168
 
-// Tidy-tree layout constants
-const LAYOUT_X_GAP = 340          // horizontal distance between depth layers
-const LAYOUT_Y_GAP = 30           // minimum vertical gap between sibling subtrees
-const LAYOUT_ROOT_PAD = 80        // extra vertical padding between separate root trees
-const LAYOUT_ORIGIN_X = 120       // left-edge x for depth-0 nodes
-const LAYOUT_ORIGIN_Y = 80        // top y offset for the entire layout
+const LAYOUT_X_GAP = 340
+const LAYOUT_Y_GAP = 30
+const LAYOUT_ROOT_PAD = 80
+const LAYOUT_ORIGIN_X = 120
+const LAYOUT_ORIGIN_Y = 80
 
-// Bezier edge aesthetics
-const BEZIER_STRENGTH = 0.45      // 0 = straight, 1 = very curved (fraction of x-distance)
+const BEZIER_STRENGTH = 0.45
+const LAYOUT_ANIM_DURATION = 420
+const LAYOUT_RELAX_ITERATIONS = 8
+const LAYOUT_OVERLAP_PAD = 12
 
-// Smooth-animation constants
-const LAYOUT_ANIM_DURATION = 420  // ms for position interpolation
+// Week calendar
+const WEEK_HOUR_START = 6
+const WEEK_HOUR_END = 23
+const WEEK_HOUR_PX = 64
 
-// Aesthetic-cleanup pass
-const LAYOUT_RELAX_ITERATIONS = 8 // overlap-prevention relaxation passes
-const LAYOUT_OVERLAP_PAD = 12     // extra padding around node bounding box for overlap check
+const MICRO_HORIZONS = new Set(['day', 'minute'])
 
 function getChildren(goals, parentId) {
   return goals
@@ -65,12 +64,10 @@ function getDescendantIds(goals, id) {
 function getLineage(goals, goal) {
   const path = []
   let cursor = goal
-
   while (cursor) {
     path.unshift(cursor)
     cursor = goals.find((item) => item.id === cursor.parentId)
   }
-
   return path
 }
 
@@ -78,13 +75,11 @@ function getInitialPosition(goals, parentId) {
   if (parentId) {
     const parent = goals.find((goal) => goal.id === parentId)
     const siblingCount = getChildren(goals, parentId).length
-
     return {
       x: (parent?.x ?? VIEWPORT_CENTER.x) + TREE_X_GAP,
       y: (parent?.y ?? VIEWPORT_CENTER.y) + (siblingCount - 0.5) * TREE_Y_GAP,
     }
   }
-
   const rootCount = getChildren(goals, null).length
   return {
     x: VIEWPORT_CENTER.x,
@@ -99,7 +94,6 @@ function getVisibleCanvasGoals(goals) {
       getDescendantIds(goals, goal.id).forEach((id) => hidden.add(id))
     }
   })
-
   return goals.filter((goal) => !hidden.has(goal.id))
 }
 
@@ -109,7 +103,6 @@ function monthMatrix(date) {
   const first = new Date(year, month, 1)
   const start = new Date(first)
   start.setDate(first.getDate() - first.getDay())
-
   return Array.from({ length: 42 }, (_, index) => {
     const day = new Date(start)
     day.setDate(start.getDate() + index)
@@ -121,6 +114,41 @@ function dateKey(date) {
   return date.toISOString().slice(0, 10)
 }
 
+function getWeekStart(date) {
+  const d = new Date(date)
+  const day = d.getDay()
+  d.setDate(d.getDate() - day + (day === 0 ? -6 : 1))
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function stepWeek(start, delta) {
+  const d = new Date(start)
+  d.setDate(d.getDate() + delta * 7)
+  return d
+}
+
+function weekDays(monday) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    return d
+  })
+}
+
+function goalBlockTop(startAt) {
+  const h = parseInt(startAt.slice(11, 13), 10)
+  const m = parseInt(startAt.slice(14, 16), 10)
+  return (h - WEEK_HOUR_START + m / 60) * WEEK_HOUR_PX
+}
+
+function goalBlockHeight(startAt, endAt) {
+  if (!endAt) return WEEK_HOUR_PX
+  const sh = parseInt(startAt.slice(11, 13), 10) * 60 + parseInt(startAt.slice(14, 16), 10)
+  const eh = parseInt(endAt.slice(11, 13), 10) * 60 + parseInt(endAt.slice(14, 16), 10)
+  return Math.max(28, ((Math.max(30, eh - sh)) / 60) * WEEK_HOUR_PX)
+}
+
 function statusCopy(status) {
   return STATUS_LABELS[status] ?? 'Planned'
 }
@@ -129,17 +157,28 @@ function durationCopy(goal) {
   return goal.durationLabel || DURATION_FALLBACKS[goal.horizon] || goal.horizon || 'Custom'
 }
 
+const DAY_NAMES_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function dayOfWeekIndex(date) {
+  const day = date.getDay()
+  return day === 0 ? 6 : day - 1
+}
+
 function PersonalPage() {
   const [goals, setGoals] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [mode, setMode] = useState('canvas')
+  const [calendarSubMode, setCalendarSubMode] = useState('week')
   const [status, setStatus] = useState('loading')
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 0.9 })
   const [dragging, setDragging] = useState(null)
   const [draftOpen, setDraftOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [showMicro, setShowMicro] = useState(false)
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches)
   const [calendarDate, setCalendarDate] = useState(new Date())
+  const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()))
+  const [expandedDay, setExpandedDay] = useState(null)
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -157,25 +196,27 @@ function PersonalPage() {
     durationLabel: '',
   })
   const canvasRef = useRef(null)
+  const weekScrollRef = useRef(null)
 
   const selectedGoal = goals.find((goal) => goal.id === selectedId) ?? null
-  const visibleGoals = useMemo(() => getVisibleCanvasGoals(goals), [goals])
+  const visibleGoals = useMemo(() => {
+    let nodes = getVisibleCanvasGoals(goals)
+    if (!showMicro) nodes = nodes.filter((g) => !MICRO_HORIZONS.has(g.horizon))
+    return nodes
+  }, [goals, showMicro])
   const visibleIds = useMemo(() => new Set(visibleGoals.map((goal) => goal.id)), [visibleGoals])
   const flatGoals = useMemo(() => flattenGoals(goals), [goals])
   const activeGoals = goals.filter((goal) => goal.status !== 'done')
   const monthDays = useMemo(() => monthMatrix(calendarDate), [calendarDate])
+  const currentWeekDays = useMemo(() => weekDays(weekStart), [weekStart])
+  const todayKey = dateKey(new Date())
 
   useEffect(() => {
     async function loadGoals() {
       setStatus('loading')
-
       try {
         const response = await fetch('/personal/api/goals')
-
-        if (!response.ok) {
-          throw new Error('Could not load goals')
-        }
-
+        if (!response.ok) throw new Error('Could not load goals')
         const data = await response.json()
         setGoals(data.goals ?? [])
         setSelectedId(data.goals?.[0]?.id ?? '')
@@ -184,22 +225,26 @@ function PersonalPage() {
         setStatus('offline')
       }
     }
-
     loadGoals()
   }, [])
+
+  // Scroll week grid to 8am when entering week view
+  useEffect(() => {
+    if (mode === 'calendar' && calendarSubMode === 'week' && weekScrollRef.current) {
+      weekScrollRef.current.scrollTop = (8 - WEEK_HOUR_START) * WEEK_HOUR_PX
+    }
+  }, [mode, calendarSubMode])
 
   useEffect(() => {
     if (!selectedGoal) {
       setInspectorDraft({ title: '', description: '', durationLabel: '' })
       return
     }
-
     setInspectorDraft({
       title: selectedGoal.title,
       description: selectedGoal.description,
       durationLabel: durationCopy(selectedGoal),
     })
-  // Keep focused inspector text stable while async saves update the selected goal.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGoal?.id])
 
@@ -211,9 +256,8 @@ function PersonalPage() {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
-  function openDraft(parentId = '') {
+  function openDraft(parentId = '', overrides = {}) {
     const parent = goals.find((goal) => goal.id === parentId)
-
     setForm({
       title: '',
       description: '',
@@ -224,6 +268,7 @@ function PersonalPage() {
       dueDate: '',
       startAt: '',
       endAt: '',
+      ...overrides,
     })
     setDraftOpen(true)
   }
@@ -231,7 +276,6 @@ function PersonalPage() {
   async function createGoal(event) {
     event.preventDefault()
     const title = form.title.trim()
-
     if (!title) return
 
     const position = getInitialPosition(goals, form.parentId || null)
@@ -267,18 +311,12 @@ function PersonalPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(optimisticGoal),
       })
-
-      if (!response.ok) {
-        throw new Error('Could not save goal')
-      }
-
+      if (!response.ok) throw new Error('Could not save goal')
       const data = await response.json()
-
       if (data.goal) {
         setGoals((currentGoals) => currentGoals.map((goal) => (goal.id === optimisticGoal.id ? data.goal : goal)))
         setSelectedId(data.goal.id)
       }
-
       setStatus('synced')
     } catch {
       setStatus('offline')
@@ -288,18 +326,13 @@ function PersonalPage() {
   async function updateGoal(id, updates) {
     setGoals((currentGoals) => currentGoals.map((goal) => (goal.id === id ? { ...goal, ...updates } : goal)))
     setStatus('saving')
-
     try {
       const response = await fetch('/personal/api/goals', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, ...updates }),
       })
-
-      if (!response.ok) {
-        throw new Error('Could not update goal')
-      }
-
+      if (!response.ok) throw new Error('Could not update goal')
       const data = await response.json()
       if (data.goal) {
         setGoals((currentGoals) => currentGoals.map((goal) => (goal.id === id ? data.goal : goal)))
@@ -312,19 +345,14 @@ function PersonalPage() {
 
   function commitInspectorDraft() {
     if (!selectedGoal) return
-
     const updates = {}
     const title = inspectorDraft.title.trim()
     const description = inspectorDraft.description.trim()
     const durationLabel = inspectorDraft.durationLabel.trim()
-
     if (title && title !== selectedGoal.title) updates.title = title
     if (description !== selectedGoal.description) updates.description = description
     if (durationLabel !== durationCopy(selectedGoal)) updates.durationLabel = durationLabel
-
-    if (Object.keys(updates).length > 0) {
-      updateGoal(selectedGoal.id, updates)
-    }
+    if (Object.keys(updates).length > 0) updateGoal(selectedGoal.id, updates)
   }
 
   function toggleDone(goal) {
@@ -337,7 +365,6 @@ function PersonalPage() {
     setGoals(nextGoals)
     setSelectedId(nextGoals[0]?.id ?? '')
     setStatus('saving')
-
     try {
       await fetch(`/personal/api/goals?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
       setStatus('synced')
@@ -365,7 +392,6 @@ function PersonalPage() {
 
   function moveDrag(event) {
     if (!dragging) return
-
     if (dragging.type === 'pan') {
       setViewport({
         ...dragging.origin,
@@ -374,12 +400,10 @@ function PersonalPage() {
       })
       return
     }
-
     const nextPosition = {
       x: dragging.origin.x + (event.clientX - dragging.startX) / viewport.scale,
       y: dragging.origin.y + (event.clientY - dragging.startY) / viewport.scale,
     }
-
     setGoals((currentGoals) => currentGoals.map((goal) => (goal.id === dragging.id ? { ...goal, ...nextPosition } : goal)))
   }
 
@@ -388,7 +412,6 @@ function PersonalPage() {
       const goal = goals.find((item) => item.id === dragging.id)
       if (goal) updateGoal(goal.id, { x: goal.x, y: goal.y })
     }
-
     setDragging(null)
   }
 
@@ -398,11 +421,9 @@ function PersonalPage() {
       setViewport((current) => ({ ...current, scale: nextScale }))
       return
     }
-
     setViewport((current) => {
       const worldX = (clientX - bounds.left - current.x) / current.scale
       const worldY = (clientY - bounds.top - current.y) / current.scale
-
       return {
         x: clientX - bounds.left - worldX * nextScale,
         y: clientY - bounds.top - worldY * nextScale,
@@ -413,7 +434,6 @@ function PersonalPage() {
 
   function handleWheel(event) {
     event.preventDefault()
-
     if (event.shiftKey) {
       setViewport((current) => ({
         ...current,
@@ -422,7 +442,6 @@ function PersonalPage() {
       }))
       return
     }
-
     const direction = event.deltaY > 0 ? -1 : 1
     const nextScale = Math.max(0.35, Math.min(1.8, Number((viewport.scale + direction * 0.08).toFixed(2))))
     zoomToward(event.clientX, event.clientY, nextScale)
@@ -461,41 +480,26 @@ function PersonalPage() {
   }
 
   function autoLayout() {
-    // ── Phase 1: Tidy-tree layout ─────────────────────────────────────────────
-    // Assign each node a position using a bottom-up subtree-size reservation
-    // approach (Reingold–Tilford / tidy-tree inspired).  Parents are centred
-    // vertically over the span of their children, so the layout feels organic.
-
     const positions = {}
 
-    // Returns the total vertical space (height) consumed by the subtree rooted
-    // at goalId, including LAYOUT_Y_GAP between siblings.
     function subtreeHeight(goalId) {
       const children = getChildren(goals, goalId)
       if (children.length === 0) return NODE_HEIGHT
-
       const childrenTotal = children.reduce((sum, child) => sum + subtreeHeight(child.id), 0)
       const gaps = LAYOUT_Y_GAP * (children.length - 1)
       return childrenTotal + gaps
     }
 
-    // Place a subtree rooted at goalId so its vertical span is centred on
-    // `centreY`, at horizontal position corresponding to `depth`.
     function placeSubtree(goalId, depth, centreY) {
       positions[goalId] = {
         x: LAYOUT_ORIGIN_X + depth * LAYOUT_X_GAP,
         y: centreY - NODE_HEIGHT / 2,
       }
-
       const children = getChildren(goals, goalId)
       if (children.length === 0) return
-
-      // Distribute children top-to-bottom within the available vertical span.
       const totalHeight = children.reduce((sum, child) => sum + subtreeHeight(child.id), 0)
         + LAYOUT_Y_GAP * (children.length - 1)
-
       let cursor = centreY - totalHeight / 2
-
       children.forEach((child) => {
         const childHeight = subtreeHeight(child.id)
         const childCentre = cursor + childHeight / 2
@@ -504,11 +508,8 @@ function PersonalPage() {
       })
     }
 
-    // Walk each root tree in order, stacking them top-to-bottom with
-    // LAYOUT_ROOT_PAD extra space between trees.
     const roots = getChildren(goals, null)
     let topCursor = LAYOUT_ORIGIN_Y
-
     roots.forEach((root) => {
       const height = subtreeHeight(root.id)
       const centre = topCursor + height / 2
@@ -516,63 +517,35 @@ function PersonalPage() {
       topCursor += height + LAYOUT_ROOT_PAD
     })
 
-    // ── Phase 2: Aesthetic cleanup pass ──────────────────────────────────────
-    // Run several relaxation iterations to push apart any nodes whose bounding
-    // boxes still overlap (can happen with very asymmetric trees).  We only
-    // shift nodes vertically to avoid disturbing the clean horizontal layers.
-
     const ids = Object.keys(positions)
-
     for (let iter = 0; iter < LAYOUT_RELAX_ITERATIONS; iter++) {
       let moved = false
-
       for (let i = 0; i < ids.length; i++) {
         for (let j = i + 1; j < ids.length; j++) {
           const a = positions[ids[i]]
           const b = positions[ids[j]]
-
-          // Axis-aligned bounding-box overlap test (with extra padding).
           const pw = NODE_WIDTH + LAYOUT_OVERLAP_PAD
           const ph = NODE_HEIGHT + LAYOUT_OVERLAP_PAD
-
           const overlapX = Math.abs(a.x - b.x) < pw
           const overlapY = Math.abs(a.y - b.y) < ph
-
           if (overlapX && overlapY) {
-            // Push apart along y only (horizontal layers are intentional).
             const pushY = (ph - Math.abs(a.y - b.y)) / 2 + 1
-            if (a.y <= b.y) {
-              a.y -= pushY
-              b.y += pushY
-            } else {
-              a.y += pushY
-              b.y -= pushY
-            }
+            if (a.y <= b.y) { a.y -= pushY; b.y += pushY }
+            else { a.y += pushY; b.y -= pushY }
             moved = true
           }
         }
       }
-
       if (!moved) break
     }
 
-    // ── Phase 3: Smooth animation ─────────────────────────────────────────────
-    // Interpolate from each node's current position to its new layout position
-    // using a requestAnimationFrame loop so the transition feels calm and fluid
-    // rather than snapping instantly.
-
     const startPositions = {}
     goals.forEach((goal) => {
-      startPositions[goal.id] = {
-        x: goal.x ?? VIEWPORT_CENTER.x,
-        y: goal.y ?? VIEWPORT_CENTER.y,
-      }
+      startPositions[goal.id] = { x: goal.x ?? VIEWPORT_CENTER.x, y: goal.y ?? VIEWPORT_CENTER.y }
     })
-
     const startTime = performance.now()
 
     function easeInOut(t) {
-      // Cubic ease-in-out for a smooth, polished feel.
       return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
     }
 
@@ -587,19 +560,11 @@ function PersonalPage() {
             const start = startPositions[goal.id]
             const end = positions[goal.id]
             if (!start || !end) return goal
-
-            return {
-              ...goal,
-              x: start.x + (end.x - start.x) * t,
-              y: start.y + (end.y - start.y) * t,
-            }
+            return { ...goal, x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t }
           })
         )
-
         requestAnimationFrame(tick)
       } else {
-        // Animation complete — snap to exact final positions via the state
-        // updater to avoid reading the stale closure-captured `goals` value.
         setGoals((currentGoals) =>
           currentGoals.map((goal) => ({ ...goal, ...(positions[goal.id] ?? {}) }))
         )
@@ -619,7 +584,72 @@ function PersonalPage() {
       .sort((a, b) => (a.startAt ?? '99').localeCompare(b.startAt ?? '99'))
   }
 
+  function toggleExpandedDay(day) {
+    setExpandedDay((prev) => (prev && dateKey(prev) === dateKey(day) ? null : day))
+  }
+
+  function scheduleToday(goalId) {
+    const today = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const startAt = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}T09:00`
+    updateGoal(goalId, { startAt })
+  }
+
   const syncLabel = status === 'loading' ? 'syncing' : status === 'saving' ? 'saving' : status === 'offline' ? 'local' : 'synced'
+
+  const weekLabel = (() => {
+    const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    return `${fmt(currentWeekDays[0])} – ${fmt(currentWeekDays[6])}`
+  })()
+
+  // Shared day-expand panel content (used in both week and month views)
+  function DayExpandPanel() {
+    if (!expandedDay) return null
+    const pad = (n) => String(n).padStart(2, '0')
+    const d = expandedDay
+    const startAtDefault = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:00`
+
+    return (
+      <div className="week-day-expand chrome-control">
+        <div className="week-expand-header">
+          <strong>
+            {expandedDay.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+          </strong>
+          <button onClick={() => setExpandedDay(null)} type="button">×</button>
+        </div>
+        <div className="week-expand-list">
+          {goalsForDay(expandedDay).length === 0 ? (
+            <span className="week-expand-empty">Nothing scheduled</span>
+          ) : (
+            goalsForDay(expandedDay).map((goal) => (
+              <button
+                key={goal.id}
+                className={`week-expand-item status-${goal.status}`}
+                onClick={() => { setMode('canvas'); setSelectedId(goal.id); setExpandedDay(null) }}
+                type="button"
+              >
+                <span className="week-expand-time">
+                  {goal.startAt ? goal.startAt.slice(11, 16) : 'due'}
+                </span>
+                <span className="week-expand-title">{goal.title}</span>
+                <span className={`week-expand-dot status-dot-${goal.status}`} />
+              </button>
+            ))
+          )}
+          <button
+            className="week-expand-add"
+            onClick={() => {
+              setExpandedDay(null)
+              openDraft('', { startAt: startAtDefault, durationLabel: '1 hour' })
+            }}
+            type="button"
+          >
+            + Add task
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="command-app">
@@ -633,7 +663,7 @@ function PersonalPage() {
         </header>
       )}
 
-      {/* ── Desktop left rail (hidden on mobile via CSS) ────────────── */}
+      {/* ── Desktop left rail ────────────────────────────────────────── */}
       <aside className="command-rail command-rail-left">
         <div className="control-stack chrome-control">
           <button className={mode === 'canvas' ? 'is-active' : ''} onClick={() => setMode('canvas')} type="button">Graph</button>
@@ -648,6 +678,19 @@ function PersonalPage() {
           <strong>{activeGoals.length}</strong>
           <span>active</span>
         </div>
+
+        {mode === 'canvas' && (
+          <div className="control-stack chrome-control">
+            <button
+              className={showMicro ? 'is-active' : ''}
+              onClick={() => setShowMicro((v) => !v)}
+              title="Toggle day/minute-horizon tasks on the canvas"
+              type="button"
+            >
+              {showMicro ? 'All tasks' : 'Goals only'}
+            </button>
+          </div>
+        )}
 
         <PushControls />
       </aside>
@@ -676,16 +719,11 @@ function PersonalPage() {
                   const parent = goals.find((item) => item.id === goal.parentId)
                   if (!parent || !visibleIds.has(parent.id)) return null
 
-                  // Edge flows right-side of parent → left-side of child.
                   const startX = (parent.x ?? VIEWPORT_CENTER.x) + NODE_WIDTH
                   const startY = (parent.y ?? VIEWPORT_CENTER.y) + NODE_HEIGHT / 2
                   const endX = goal.x ?? VIEWPORT_CENTER.x
                   const endY = (goal.y ?? VIEWPORT_CENTER.y) + NODE_HEIGHT / 2
 
-                  // Cubic Bezier control points offset horizontally by BEZIER_STRENGTH
-                  // of the x-distance, creating gentle horizontal S-curves.
-                  // Use at least 60px of horizontal offset so curves stay readable
-                  // even when a child has been dragged to the left of its parent.
                   const rawDx = (endX - startX) * BEZIER_STRENGTH
                   const dx = rawDx > 0 ? Math.max(rawDx, 60) : Math.min(rawDx, -60)
                   const cp1x = startX + dx
@@ -746,7 +784,6 @@ function PersonalPage() {
               </div>
             )}
 
-            {/* Floating zoom controls — only visible on mobile */}
             {isMobile && (
               <div className="zoom-float">
                 <button onClick={() => zoomBy(0.12)} type="button">+</button>
@@ -755,6 +792,7 @@ function PersonalPage() {
               </div>
             )}
           </section>
+
         ) : mode === 'list' ? (
           /* ── Mobile list view ─────────────────────────────────────── */
           <div className="mobile-list">
@@ -791,31 +829,158 @@ function PersonalPage() {
               ))
             )}
           </div>
-        ) : (
-          /* ── Calendar view ────────────────────────────────────────── */
-          <section className="calendar-shell">
+
+        ) : calendarSubMode === 'week' ? (
+          /* ── Week calendar ───────────────────────────────────────── */
+          <section className="calendar-shell week-shell">
             <div className="calendar-top chrome-control">
-              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} type="button">Prev</button>
+              <button onClick={() => setCalendarSubMode('month')} type="button">Month</button>
+              <button onClick={() => setWeekStart((s) => stepWeek(s, -1))} type="button">‹</button>
+              <strong>{weekLabel}</strong>
+              <button onClick={() => setWeekStart((s) => stepWeek(s, 1))} type="button">›</button>
+              <button onClick={() => setWeekStart(getWeekStart(new Date()))} type="button">Today</button>
+            </div>
+
+            {/* Day column headers — click to expand */}
+            <div className="week-header">
+              <div className="week-gutter-spacer" />
+              {currentWeekDays.map((day) => {
+                const key = dateKey(day)
+                const isToday = key === todayKey
+                const isExpanded = expandedDay && dateKey(expandedDay) === key
+                const count = goalsForDay(day).length
+                return (
+                  <button
+                    key={key}
+                    className={`week-day-head ${isToday ? 'is-today' : ''} ${isExpanded ? 'is-expanded' : ''}`}
+                    onClick={() => toggleExpandedDay(day)}
+                    type="button"
+                  >
+                    <span className="week-day-name">{DAY_NAMES_SHORT[dayOfWeekIndex(day)]}</span>
+                    <strong className="week-day-num">{day.getDate()}</strong>
+                    {count > 0 && <span className="week-day-badge">{count}</span>}
+                  </button>
+                )
+              })}
+            </div>
+
+            <DayExpandPanel />
+
+            {/* All-day strip: tasks with dueDate only (no startAt) */}
+            {(() => {
+              const allDayGoals = currentWeekDays.flatMap((day) => {
+                const key = dateKey(day)
+                return goals
+                  .filter((g) => g.dueDate === key && !g.startAt)
+                  .map((g) => ({ goal: g, dayKey: key }))
+              })
+              if (allDayGoals.length === 0) return null
+              return (
+                <div className="week-allday-row">
+                  <div className="week-gutter-spacer week-allday-label">due</div>
+                  {currentWeekDays.map((day) => {
+                    const key = dateKey(day)
+                    const chips = allDayGoals.filter((x) => x.dayKey === key)
+                    return (
+                      <div key={key} className="week-allday-cell">
+                        {chips.map(({ goal }) => (
+                          <button
+                            key={goal.id}
+                            className={`week-allday-chip status-${goal.status}`}
+                            onClick={() => { setMode('canvas'); setSelectedId(goal.id) }}
+                            type="button"
+                          >
+                            {goal.title}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+
+            {/* Scrollable time grid */}
+            <div className="week-scroll" ref={weekScrollRef}>
+              <div className="week-grid">
+                <div className="week-time-col">
+                  {Array.from({ length: WEEK_HOUR_END - WEEK_HOUR_START }, (_, i) => (
+                    <div key={i} className="week-hour-label" style={{ height: WEEK_HOUR_PX }}>
+                      {String(WEEK_HOUR_START + i).padStart(2, '0')}:00
+                    </div>
+                  ))}
+                </div>
+
+                {currentWeekDays.map((day) => {
+                  const key = dateKey(day)
+                  const isToday = key === todayKey
+                  const timedGoals = goals.filter((g) => g.startAt && g.startAt.slice(0, 10) === key)
+                  return (
+                    <div
+                      key={key}
+                      className={`week-day-col ${isToday ? 'is-today' : ''}`}
+                      style={{ height: (WEEK_HOUR_END - WEEK_HOUR_START) * WEEK_HOUR_PX }}
+                    >
+                      {Array.from({ length: WEEK_HOUR_END - WEEK_HOUR_START }, (_, i) => (
+                        <div key={i} className="week-hour-line" style={{ top: i * WEEK_HOUR_PX }} />
+                      ))}
+                      {timedGoals.map((goal) => (
+                        <button
+                          key={goal.id}
+                          className={`week-block status-${goal.status} ${selectedId === goal.id ? 'is-selected' : ''}`}
+                          style={{ top: goalBlockTop(goal.startAt), height: goalBlockHeight(goal.startAt, goal.endAt) }}
+                          onClick={() => { setMode('canvas'); setSelectedId(goal.id) }}
+                          type="button"
+                        >
+                          <strong className="week-block-title">{goal.title}</strong>
+                          <span className="week-block-time">
+                            {goal.startAt.slice(11, 16)}
+                            {goal.endAt ? `–${goal.endAt.slice(11, 16)}` : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </section>
+
+        ) : (
+          /* ── Month calendar ───────────────────────────────────────── */
+          <section className="calendar-shell month-shell">
+            <div className="calendar-top chrome-control">
+              <button onClick={() => setCalendarSubMode('week')} type="button">Week</button>
+              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} type="button">‹</button>
               <strong>{calendarDate.toLocaleString(undefined, { month: 'long', year: 'numeric' })}</strong>
-              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} type="button">Next</button>
+              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} type="button">›</button>
             </div>
             <div className="calendar-grid">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="calendar-label" key={day}>{day}</span>)}
               {monthDays.map((day) => {
+                const key = dateKey(day)
                 const dayGoals = goalsForDay(day)
                 const muted = day.getMonth() !== calendarDate.getMonth()
+                const isToday = key === todayKey
+                const isExpanded = expandedDay && dateKey(expandedDay) === key
 
                 return (
-                  <div className={`calendar-cell ${muted ? 'is-muted' : ''}`} key={day.toISOString()}>
-                    <span>{day.getDate()}</span>
+                  <div
+                    className={`calendar-cell ${muted ? 'is-muted' : ''} ${isToday ? 'is-today' : ''}`}
+                    key={day.toISOString()}
+                  >
+                    <button
+                      className={`calendar-day-num ${isExpanded ? 'is-expanded' : ''}`}
+                      onClick={() => toggleExpandedDay(day)}
+                      type="button"
+                    >
+                      {day.getDate()}
+                    </button>
                     {dayGoals.map((goal) => (
                       <button
                         key={goal.id}
-                        onClick={() => {
-                          setMode('canvas')
-                          setSelectedId(goal.id)
-                          if (isMobile) setSheetOpen(true)
-                        }}
+                        className={`calendar-goal-chip status-${goal.status}`}
+                        onClick={() => { setMode('canvas'); setSelectedId(goal.id); if (isMobile) setSheetOpen(true) }}
                         type="button"
                       >
                         {goal.startAt ? `${goal.startAt.slice(11, 16)} ` : ''}{goal.title}
@@ -825,11 +990,12 @@ function PersonalPage() {
                 )
               })}
             </div>
+            <DayExpandPanel />
           </section>
         )}
       </main>
 
-      {/* ── Desktop right rail (hidden on mobile via CSS) ────────────── */}
+      {/* ── Desktop right rail ───────────────────────────────────────── */}
       <aside className="command-rail command-rail-right">
         <div className="control-stack chrome-control">
           <button onClick={() => zoomBy(0.12)} type="button">Zoom +</button>
@@ -854,11 +1020,7 @@ function PersonalPage() {
                 value={inspectorDraft.title}
                 onBlur={commitInspectorDraft}
                 onChange={(event) => setInspectorDraft((draft) => ({ ...draft, title: event.target.value }))}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.currentTarget.blur()
-                  }
-                }}
+                onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
               />
               <textarea
                 onBlur={commitInspectorDraft}
@@ -874,11 +1036,7 @@ function PersonalPage() {
                   value={inspectorDraft.durationLabel}
                   onBlur={commitInspectorDraft}
                   onChange={(event) => setInspectorDraft((draft) => ({ ...draft, durationLabel: event.target.value }))}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.currentTarget.blur()
-                    }
-                  }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
                 />
               </label>
               <select value={selectedGoal.status} onChange={(event) => updateGoal(selectedGoal.id, { status: event.target.value })}>
@@ -889,11 +1047,18 @@ function PersonalPage() {
                 <input type="date" value={selectedGoal.dueDate ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { dueDate: event.target.value })} />
               </label>
               <label>
-                Scheduled start
-                <input type="datetime-local" value={selectedGoal.startAt ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { startAt: event.target.value })} />
+                Start
+                <div className="inspector-row">
+                  <input
+                    type="datetime-local"
+                    value={selectedGoal.startAt ?? ''}
+                    onChange={(event) => updateGoal(selectedGoal.id, { startAt: event.target.value })}
+                  />
+                  <button onClick={() => scheduleToday(selectedGoal.id)} title="Schedule for today at 9am" type="button">Today</button>
+                </div>
               </label>
               <label>
-                Scheduled end
+                End
                 <input type="datetime-local" value={selectedGoal.endAt ?? ''} onChange={(event) => updateGoal(selectedGoal.id, { endAt: event.target.value })} />
               </label>
               <label>
@@ -990,10 +1155,7 @@ function PersonalPage() {
                 onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
                 placeholder="Title"
               />
-              <select
-                value={selectedGoal.status}
-                onChange={(event) => updateGoal(selectedGoal.id, { status: event.target.value })}
-              >
+              <select value={selectedGoal.status} onChange={(event) => updateGoal(selectedGoal.id, { status: event.target.value })}>
                 {Object.entries(STATUS_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
                 ))}
@@ -1017,6 +1179,14 @@ function PersonalPage() {
                 />
               </label>
               <label>
+                Start
+                <input
+                  type="datetime-local"
+                  value={selectedGoal.startAt ?? ''}
+                  onChange={(event) => updateGoal(selectedGoal.id, { startAt: event.target.value })}
+                />
+              </label>
+              <label>
                 Priority
                 <input
                   max="5"
@@ -1034,17 +1204,10 @@ function PersonalPage() {
                 value={inspectorDraft.description}
               />
               <div className="sheet-row-actions">
-                <button
-                  onClick={() => { setSheetOpen(false); openDraft(selectedGoal.id) }}
-                  type="button"
-                >
+                <button onClick={() => { setSheetOpen(false); openDraft(selectedGoal.id) }} type="button">
                   + Sub-goal
                 </button>
-                <button
-                  className="danger"
-                  onClick={() => { deleteGoal(selectedGoal.id); setSheetOpen(false) }}
-                  type="button"
-                >
+                <button className="danger" onClick={() => { deleteGoal(selectedGoal.id); setSheetOpen(false) }} type="button">
                   Delete ×
                 </button>
               </div>
