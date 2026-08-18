@@ -1,22 +1,13 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap');
 
 :root {
-  --text:      #3a4a5c;
-  --text-h:    #0d1b2e;
-  --text-soft: #5a6e84;
-  --pill-bg: rgba(255, 255, 255, 0.55);
-  --pill-bg-hover: rgba(255, 255, 255, 0.82);
-  --pill-border: rgba(255, 255, 255, 0.85);
-  --pill-text: #1a3a5c;
-
   font-family: 'Nunito', system-ui, 'Helvetica Neue', Arial, sans-serif;
-  font-size: 17px;
-  line-height: 1.5;
-  color: var(--text);
-  color-scheme: light;
+  color: #102b46;
+  background: #b8e4ff;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 *,
@@ -28,20 +19,24 @@
 html,
 body,
 #root {
+  min-width: 320px;
+  min-height: 100%;
   margin: 0;
-  padding: 0;
-  height: 100%;
 }
 
 body {
+  min-height: 100svh;
   background-image: url('./assets/background.jpg');
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
-  min-height: 100svh;
 }
 
-/* iOS Safari ignores background-attachment: fixed — use scroll instead */
+::selection {
+  color: #fff;
+  background: #2879cd;
+}
+
 @supports (-webkit-touch-callout: none) {
   body {
     background-attachment: scroll;

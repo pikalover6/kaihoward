@@ -1,167 +1,245 @@
-/* -- Page -- */
 .page {
   min-height: 100svh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  box-sizing: border-box;
+  padding: clamp(16px, 4vw, 52px);
+  display: grid;
+  place-items: center;
 }
 
-/* -- Layout column: navbar + card stacked -- */
 .layout {
-  width: 75vw;
-  height: 75svh;
+  width: min(1100px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
-/* -- Mobile -- */
-@media (max-width: 640px) {
-  .page {
-    align-items: flex-start;
-    padding: 16px;
-  }
-
-  .layout {
-    width: 100%;
-    height: auto;
-  }
-
-  .navbar {
-    border-radius: 20px;
-    padding: 14px 16px;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .nav-brand {
-    padding: 0;
-    font-size: 0.95rem;
-  }
-
-  .nav-right {
-    padding-right: 0;
-    gap: 4px;
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
-  .nav-link {
-    padding: 7px 14px;
-    font-size: 0.875rem;
-  }
-
-  .card {
-    flex: 0 0 auto;
-    border-radius: 20px;
-    padding: 28px 24px;
-  }
-
-  .card-bio {
-    font-size: 1.05rem;
-  }
-
-  .indent {
-    width: 1.5em;
-  }
-}
-
-/* -- Slim navbar bar -- */
-.navbar {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(22px) saturate(1.8);
-  -webkit-backdrop-filter: blur(22px) saturate(1.8);
-  border-radius: 999px;
-  border: 1.5px solid rgba(255, 255, 255, 0.72);
+.title-bar,
+.project-card {
+  position: relative;
+  overflow: hidden;
+  border: 1.5px solid rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.36);
   box-shadow:
-    0 4px 16px rgba(80, 160, 220, 0.15),
-    0 1px 4px rgba(0, 0, 0, 0.06),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.85);
-  /* uniform vertical padding; horizontal handled by children so hover
-     pill edges land at the same inset on both sides */
-  padding: 8px;
+    0 12px 32px rgba(52, 122, 180, 0.18),
+    0 2px 8px rgba(20, 55, 90, 0.1),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(70, 135, 185, 0.08);
+  backdrop-filter: blur(22px) saturate(1.65);
+  -webkit-backdrop-filter: blur(22px) saturate(1.65);
+}
+
+.title-bar::before,
+.project-card::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 48%;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent);
+  content: '';
+  pointer-events: none;
+}
+
+.title-bar {
+  min-height: 82px;
+  padding: 14px 22px 14px 30px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-shrink: 0;
 }
 
-/* Brand text on the left — left margin matches right group's pill margin */
-.nav-brand {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text-h);
-  letter-spacing: 0.02em;
-  /* 32px so brand text aligns with card's 48px padding (8px bar + 8px here + 16px pill-pad equivalent) */
-  padding: 7px 0 7px 32px;
-  user-select: none;
-}
-
-/* Right-side links group */
-.nav-right {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding-right: 16px;
-}
-
-.nav-link {
-  padding: 8px 16px;
-  border-radius: 999px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-decoration: none;
-  color: var(--text-h);
-  letter-spacing: 0.01em;
-  transition: background 0.15s, color 0.15s;
-}
-
-.nav-link:hover {
-  background: rgba(255, 255, 255, 0.50);
-  color: #1060b8;
-}
-
-/* -- Glassmorphic card -- */
-.card {
-  width: 100%;
-  flex: 1;
-  background: rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(22px) saturate(1.8);
-  -webkit-backdrop-filter: blur(22px) saturate(1.8);
-  border-radius: 28px;
-  border: 1.5px solid rgba(255, 255, 255, 0.72);
-  box-shadow:
-    0 8px 32px rgba(80, 160, 220, 0.18),
-    0 2px 8px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.85);
-  padding: 48px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-}
-
-/* -- Bio (now the primary hero text) -- */
-.card-bio {
-  font-size: clamp(1.15rem, 2vw, 1.4rem);
-  font-weight: 500;
-  color: var(--text);
-  line-height: 1.75;
+.title-bar h1 {
+  position: relative;
+  z-index: 1;
   margin: 0;
-  text-align: left;
-}
-
-/* First-line paragraph indent */
-.indent {
-  display: inline-block;
-  width: 2.2em;
-}
-
-.card-bio strong {
+  color: #102b46;
+  font-size: clamp(1.45rem, 3vw, 2.15rem);
   font-weight: 800;
-  color: var(--text-h);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.title-bar > span {
+  position: relative;
+  z-index: 1;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #68c9ff, #3b79e7);
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.55),
+    0 5px 14px rgba(40, 111, 196, 0.28);
+}
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.project-card {
+  min-height: clamp(205px, 26vh, 280px);
+  padding: 24px 26px;
+  border-radius: 30px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  color: #102b46;
+  text-decoration: none;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.project-card::after {
+  position: absolute;
+  right: -42px;
+  bottom: -48px;
+  width: 150px;
+  height: 150px;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 33% 28%, rgba(255, 255, 255, 0.95), transparent 13%),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 48%, white), var(--accent));
+  box-shadow:
+    inset 10px 12px 22px rgba(255, 255, 255, 0.32),
+    0 10px 24px color-mix(in srgb, var(--accent) 28%, transparent);
+  content: '';
+  opacity: 0.68;
+  transition: transform 220ms ease, opacity 180ms ease;
+}
+
+.project-card:hover,
+.project-card:focus-visible {
+  transform: translateY(-6px);
+  border-color: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow:
+    0 20px 42px color-mix(in srgb, var(--accent) 24%, rgba(36, 102, 158, 0.16)),
+    0 4px 12px rgba(20, 55, 90, 0.1),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95);
+  outline: none;
+}
+
+.project-card:hover::after,
+.project-card:focus-visible::after {
+  opacity: 0.9;
+  transform: translate(-10px, -10px) scale(1.08);
+}
+
+.project-number,
+.project-arrow,
+.project-name,
+.project-domain {
+  position: relative;
+  z-index: 1;
+}
+
+.project-number,
+.project-domain {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.project-number {
+  width: fit-content;
+  padding: 6px 10px;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.4),
+    0 3px 9px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.project-arrow {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 1.15rem;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 70%, white), var(--accent));
+  box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.45);
+  transition: transform 180ms ease;
+}
+
+.project-card:hover .project-arrow,
+.project-card:focus-visible .project-arrow {
+  transform: translate(3px, -3px);
+}
+
+.project-name {
+  grid-column: 1 / -1;
+  align-self: end;
+  max-width: 14ch;
+  font-size: clamp(1.7rem, 3.6vw, 3.25rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+  text-wrap: balance;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.project-domain {
+  align-self: end;
+  color: #315c7d;
+}
+
+@media (max-width: 680px) {
+  .page {
+    padding: 14px;
+    place-items: start center;
+  }
+
+  .layout {
+    gap: 10px;
+  }
+
+  .title-bar {
+    min-height: 68px;
+    padding: 9px 10px 9px 22px;
+  }
+
+  .title-bar > span {
+    width: 48px;
+    height: 48px;
+  }
+
+  .project-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .project-card {
+    min-height: 170px;
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .project-name {
+    font-size: clamp(1.9rem, 9vw, 2.8rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-card,
+  .project-card::after,
+  .project-arrow {
+    transition: none;
+  }
 }

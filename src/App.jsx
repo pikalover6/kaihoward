@@ -1,60 +1,62 @@
 import './App.css'
 
-const navLinks = [
-  { label: 'GitHub',      href: 'https://github.com/pikalover6' },
-  { label: 'Huggingface', href: 'https://huggingface.co/totally-not-an-llm' },
-  { label: 'Instagram',   href: 'https://www.instagram.com/kaihoward824/' },
-  { label: 'Email',       href: 'mailto:kaihoward106@gmail.com' },
+const projects = [
+  {
+    name: 'totally-not-an-llm',
+    domain: 'huggingface.co',
+    href: 'https://huggingface.co/totally-not-an-llm',
+    accent: '#ffbf3f',
+  },
+  {
+    name: 'GPT-2 Whisperer',
+    domain: 'pikalover6.github.io',
+    href: 'https://pikalover6.github.io/gpt2whisperer/',
+    accent: '#4aa8ff',
+  },
+  {
+    name: 'Claude Subagents Effort',
+    domain: 'github.com',
+    href: 'https://github.com/pikalover6/claude-subagents-effort',
+    accent: '#9b75ff',
+  },
+  {
+    name: 'Terrainist',
+    domain: 'terrainist.com',
+    href: 'https://terrainist.com/',
+    accent: '#49c879',
+  },
 ]
 
 function App() {
   return (
-    <div className="page">
+    <main className="page">
       <div className="layout">
+        <header className="title-bar">
+          <h1>kaihoward.com</h1>
+          <span aria-hidden="true">✦</span>
+        </header>
 
-        <nav className="navbar">
-          <span className="nav-brand">kaihoward.com</span>
-          <div className="nav-right">
-            {navLinks.map(({ label, href }) => (
-              <a
-                key={label}
-                href={href}
-                className="nav-link"
-                target={href.startsWith('http') ? '_blank' : undefined}
-                rel="noreferrer"
-              >
-                {label}
-              </a>
-            ))}
-          </div>
+        <nav className="project-grid" aria-label="Projects">
+          {projects.map(({ name, domain, href, accent }, index) => (
+            <a
+              key={href}
+              className="project-card"
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              style={{ '--accent': accent }}
+            >
+              <span className="project-number">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <span className="project-arrow" aria-hidden="true">↗</span>
+              <span className="project-name">{name}</span>
+              <span className="project-domain">{domain}</span>
+            </a>
+          ))}
         </nav>
-
-        <div className="card">
-          <div className="card-inner">
-
-            <p className="card-bio">
-              <span className="indent" />
-              I'm an 18 year old HS senior interested in AI and law. View my links and contact above.
-              {" "}View the source for this website{" "}
-              <a
-                href="https://github.com/pikalover6/kaihoward"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                here
-              </a>.
-            </p>
-
-            <p className="card-bio">
-              <span className="indent" />
-              More content coming soon.
-            </p>
-
-          </div>
-        </div>
-
       </div>
-    </div>
+    </main>
   )
 }
 
