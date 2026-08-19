@@ -2,10 +2,10 @@ import './App.css'
 
 const projects = [
   {
-    name: 'totally-not-an-llm',
-    domain: 'huggingface.co',
-    href: 'https://huggingface.co/totally-not-an-llm',
-    accent: '#ffbf3f',
+    name: 'Terrainist',
+    domain: 'terrainist.com',
+    href: 'https://terrainist.com/',
+    accent: '#49c879',
   },
   {
     name: 'GPT-2 Whisperer',
@@ -20,10 +20,10 @@ const projects = [
     accent: '#9b75ff',
   },
   {
-    name: 'Terrainist',
-    domain: 'terrainist.com',
-    href: 'https://terrainist.com/',
-    accent: '#49c879',
+    name: 'totally-not-an-llm',
+    domain: 'huggingface.co',
+    href: 'https://huggingface.co/totally-not-an-llm',
+    accent: '#ffbf3f',
   },
 ]
 
@@ -33,7 +33,16 @@ function App() {
       <div className="layout">
         <header className="title-bar">
           <h1>kaihoward.com</h1>
-          <span aria-hidden="true">✦</span>
+          <a
+            className="mail-link"
+            href="mailto:kaihoward106@gmail.com"
+            aria-label="Email Kai Howard"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4.5 6.75h15v10.5h-15z" />
+              <path d="m5 7.25 7 5.5 7-5.5" />
+            </svg>
+          </a>
         </header>
 
         <nav className="project-grid" aria-label="Projects">
