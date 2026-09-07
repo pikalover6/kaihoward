@@ -10,35 +10,13 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
 
-html,
-body,
-#root {
-  min-width: 320px;
-  min-height: 100%;
+html, body, #root {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
-body {
-  min-height: 100svh;
-  background-image: url('./assets/background.jpg');
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed;
-}
-
-::selection {
-  color: #fff;
-  background: #2879cd;
-}
-
-@supports (-webkit-touch-callout: none) {
-  body {
-    background-attachment: scroll;
-  }
-}
+::selection { color: #fff; background: #2879cd; }
