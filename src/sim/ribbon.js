@@ -19,7 +19,8 @@ varying float vFogDepth;
 void main(){
   float fogF = 1.0 - exp(-uFogDensity * uFogDensity * vFogDepth * vFogDepth);
   vec3 c = mix(uColor, uFogColor, fogF);
-  gl_FragColor = vec4(c, vAlpha * uOpacity);
+  float a = clamp(vAlpha * uOpacity, 0.0, 1.0);
+  gl_FragColor = vec4(c * a, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -59,6 +60,7 @@ export class Ribbon {
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
+      premultipliedAlpha: true,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     }))
     this.mesh.frustumCulled = false
