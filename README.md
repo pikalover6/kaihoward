@@ -14,14 +14,16 @@ behind the `kh` monogram in the top-left corner.
 | Q / E | rudder |
 | shift / ctrl | throttle |
 | space | barrel roll |
+| X | engine on / off (off = glide or skydive) |
+| R | respawn above the clouds |
 | V | cycle view (chase, cockpit, cinematic, orbit) |
 | F | draw a path with the mouse, the plane flies it |
 | M | sound |
 | esc | leave draw mode / close the card |
 
-Dive below the clouds and keep going for a couple of minutes to reach the
-ground. You can't crash: get close and the plane lands itself, then you're
-back above the clouds.
+Dive through a break in the cloud deck and keep going for about half a
+minute to reach the ground. You can't crash: the ground gently pushes the
+nose back up. Press R to go back above the clouds.
 
 ## Tech
 
@@ -36,12 +38,12 @@ Source lives in `src/sim/`:
 | --- | --- |
 | `engine.js` | scene setup, main loop, lighting/fog by altitude, auto-landing |
 | `sky.js` | sky dome shader, fog colour/density per altitude |
-| `clouds.js` | cloud sea surface, cirrus veil, instanced billboard puffs |
+| `clouds.js` | cloud deck with breaks, cirrus veil, instanced billboard puffs |
 | `plane.js` | the aircraft model |
 | `flight.js` | arcade flight model |
 | `cameras.js` | camera rig and view modes |
 | `drawpath.js` | draw-a-path mode and path following |
-| `terrain.js` | tiled procedural terrain with trees |
+| `terrain.js` | endless clipmap terrain (heights computed in the vertex shader) with trees |
 | `life.js` | birds, balloons, bubbles, sparkles |
 | `audio.js` | procedural engine + wind |
 

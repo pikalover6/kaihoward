@@ -7,7 +7,7 @@ import { GROUND_Y, SUN_DIR } from './constants.js'
 // each with a hole where the finer level sits. Heights come from the vertex
 // shader (noise identical to the JS port) so the world is endless and costs no CPU.
 
-const LEVELS = 7, CELLS = 48, BASE = 14, HOLE0 = 14, HOLE1 = 34 // hole = 20 cells, finer level spans 24
+const LEVELS = 5, CELLS = 64, BASE = 12, HOLE0 = 18, HOLE1 = 46 // hole = 28 cells, finer level spans 32
 
 const vert = /* glsl */ `
 precision highp float;
@@ -162,7 +162,7 @@ export class Terrain {
         uniforms: {
           ...this.uniforms,
           uSpacing: { value: spacing },
-          uDrop: { value: k === 0 ? 0 : spacing * 0.35 },
+          uDrop: { value: k === 0 ? 0 : spacing * 0.3 },
           uLevelOrigin: { value: new THREE.Vector2(0, 0) },
         },
         vertexShader: vert,

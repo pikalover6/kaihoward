@@ -141,9 +141,11 @@ void main(){
   vec2 sl = uSunLocal / max(length(uSunLocal), 0.2);
   float lit = clamp(0.5 + 0.9 * dot(vLocal, sl), 0.0, 1.0);
   float t = clamp(vLocal.y + 0.5, 0.0, 1.0);
-  vec3 shadow = S(0.60, 0.72, 0.94);
+  vec3 shadow = S(0.50, 0.64, 0.92);
   vec3 litC = S(0.99, 0.99, 1.0);
-  vec3 c = mix(shadow, litC, clamp(lit * 0.5 + t * 0.6, 0.0, 1.0));
+  // thick interior is bluer, especially toward the bottom
+  float thick = smoothstep(0.2, 0.9, a);
+  vec3 c = mix(shadow, litC, clamp(lit * 0.7 + t * 0.5 - 0.15 - thick * (1.0 - t) * 0.35, 0.0, 1.0));
   // silver lining on thin edges facing the sun
   float rim = smoothstep(0.45, 0.05, a) * lit;
   c += S(1.0, 1.0, 1.0) * rim * 0.35;
@@ -198,9 +200,9 @@ function makePuffAtlas() {
         const nz = fbm((x + k * 900) / 70, (y + k * 300) / 70) * 0.5 + 0.5
         const nz2 = fbm((x + k * 130) / 22, (y + k * 70) / 22) * 0.5 + 0.5
         const i = (y * cell + x) * 4
-        let a = d[i + 3] / 255 * 1.9 * v
-        a *= 0.55 + 0.65 * nz + 0.3 * (nz2 - 0.5)
-        a = Math.max(0, Math.min(1, (a - 0.08) * 1.15))
+        let a = d[i + 3] / 255 * 2.7 * v
+        a *= 0.6 + 0.55 * nz + 0.25 * (nz2 - 0.5)
+        a = Math.max(0, Math.min(1, (a - 0.1) * 1.2))
         d[i] = 255; d[i + 1] = 255; d[i + 2] = 255
         d[i + 3] = Math.round(a * 255)
       }

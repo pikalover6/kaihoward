@@ -97,7 +97,7 @@ export class Engine {
     this._onResize = () => this.resize()
     window.addEventListener('resize', this._onResize)
     this._loop = () => this.loop()
-    requestAnimationFrame(this._loop)
+    this.schedule()
     this.emit()
     if (import.meta.env.DEV) { window.__engine = this; window.__THREE = THREE; window.__glsl = { TN, TT, th } }
   }
@@ -219,13 +219,14 @@ export class Engine {
 
   loop() {
     if (!this.running) return
-    // in dev, keep simulating when the tab is hidden (browser automation / background testing)
-    if (import.meta.env.DEV && document.hidden) this.workerTick(this._loop)
-    else requestAnimationFrame(this._loop)
+    this.schedule()
     const now = performance.now()
     let dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
     this.frame++
+    const prof = import.meta.env.DEV ? (window.__prof = window.__prof || {}) : null
+    const mark = (k) => { if (prof) prof[k] = performance.now() }
+    mark('start')
     const inp = this.input.poll()
     if (this.input.isTouch && !this.flight.locked) this.flight.throttle = 0.6
 
@@ -242,9 +243,11 @@ export class Engine {
       if (!this.draw.active) this.timeScale = 1
       this.emit({ draw: this.draw.active ? this.draw.state : 'off' })
     }
+    mark('sim')
     this.updateFloor(sdt)
     this.updateRespawn(dt)
     this.shiftOrigin()
+    mark('floor')
 
     // plane visuals
     const P = this.plane
@@ -283,6 +286,7 @@ export class Engine {
     })
     P.scarf.rebuild()
 
+    mark('visuals')
     // camera
     const override = this.draw.active ? this.draw.cameraTarget() : null
     this.rig.update(dt, fl, inp, override)
@@ -309,28 +313,40 @@ export class Engine {
 
     // terrain has its own haze so the ground seen through cloud breaks is always distant and soft
     const tu = this.terrain.uniforms
-    tu.uFogColor.value.copy(fogColorFor(Math.min(alt, CLOUD_Y - 400)))
-    tu.uFogDensity.value = Math.max(this.fogUniforms.density.value, 0.00036)
+    tu.uFogColor.value.copy(fogColorFor(Math.min(alt, CLOUD_Y - 400))).lerp(new THREE.Color('#b9cfe8'), 1 - below)
+    tu.uFogDensity.value = Math.max(this.fogUniforms.density.value, 0.00029)
     tu.uSunI.value = THREE.MathUtils.lerp(0.95, 0.5, below)
     tu.uAmb.value = THREE.MathUtils.lerp(1.0, 0.95, below)
     tu.uSkyCol.value.copy(this.hemi.color)
     tu.uGroundCol.value.copy(this.hemi.groundColor)
 
+    mark('camera')
     // systems
     this.sky.update(this.time, this.camera, alt)
+    mark('sky')
     this.clouds.update(sdt, this.camera, fl.pos)
+    mark('clouds')
     this.terrain.update(fl.pos, this.camera, this.time)
+    mark('terrain')
     this.life.update(sdt, this.time, fl, this.camera, this.audio)
+    mark('life')
     this.audio.update(fl.engine ? fl.speed : 0, fl.engine ? fl.throttle : 0, inside, fl.engine ? 0 : 1, fl.speed)
 
     if (this.useBloom) this.composer.render()
     else this.renderer.render(this.scene, this.camera)
+    mark('render')
     if (this.onFade) this.onFade(this.fade)
+  }
+
+  schedule() {
+    // in dev, keep simulating when the tab is hidden (browser automation / background testing)
+    if (import.meta.env.DEV && document.hidden) this.workerTick(this._loop)
+    else requestAnimationFrame(this._loop)
   }
 
   workerTick(fn) {
     if (!this.ticker) {
-      const src = 'setInterval(() => postMessage(0), 16)'
+      const src = 'setInterval(() => postMessage(0), 50)'
       this.ticker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })))
       this.ticker.onmessage = () => { const f = this.tickFn; this.tickFn = null; if (f) f() }
     }
