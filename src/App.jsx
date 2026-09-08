@@ -15,7 +15,7 @@ export default function App() {
   const canvasRef = useRef(null)
   const fadeRef = useRef(null)
   const engineRef = useRef(null)
-  const [state, setState] = useState({ mode: 'chase', draw: 'off', sound: false, landing: false, engine: true })
+  const [state, setState] = useState({ mode: 'chase', draw: 'off', sound: false, landing: false })
   const [card, setCard] = useState(false)
   const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
 
@@ -47,7 +47,6 @@ export default function App() {
           <span><kbd>q e</kbd> rudder</span>
           <span><kbd>shift ctrl</kbd> throttle</span>
           <span><kbd>space</kbd> barrel roll</span>
-          <span><kbd>x</kbd> engine {state.engine ? 'on' : 'off'}</span>
         </div>
       )}
       {!isTouch && (
@@ -66,7 +65,6 @@ export default function App() {
           <button onClick={() => eng()?.cycleView()}>view</button>
           <button onClick={() => eng()?.toggleDraw()}>{drawing ? 'stop' : 'draw'}</button>
           <button onClick={() => eng()?.toggleSound()}>{state.sound ? 'mute' : 'sound'}</button>
-          <button onClick={() => eng()?.toggleEngine()}>{state.engine ? 'engine off' : 'engine on'}</button>
           <button onClick={() => eng()?.respawn()}>respawn</button>
         </div>
       )}

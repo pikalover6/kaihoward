@@ -22,7 +22,7 @@ export class Engine {
   constructor(canvas, onState) {
     this.canvas = canvas
     this.onState = onState
-    this.state = { mode: 'chase', draw: 'off', sound: false, landing: false, engine: true }
+    this.state = { mode: 'chase', draw: 'off', sound: false, landing: false }
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -112,15 +112,8 @@ export class Engine {
     else if (k === 'f') this.toggleDraw()
     else if (k === 'm') this.toggleSound()
     else if (k === ' ') { if (!this.flight.locked && !this.flight.autopilot) this.flight.startBarrelRoll(this.input.has('a', 'arrowleft') ? -1 : 1) }
-    else if (k === 'x') this.toggleEngine()
     else if (k === 'r') this.respawn()
     else if (k === 'escape') { if (this.draw.active) this.toggleDraw() }
-  }
-
-  toggleEngine() {
-    if (this.flight.locked) return
-    this.flight.engine = !this.flight.engine
-    this.emit({ engine: this.flight.engine })
   }
 
   respawn() {
@@ -192,7 +185,7 @@ export class Engine {
     const sy = fl.up(_v2).y >= 0 ? 1 : -1
     const push = THREE.MathUtils.clamp(1 - agl / 60, 0, 1)
     if (f.y < 0.05) fl.rotateLocal(new THREE.Vector3(1, 0, 0), (0.05 - f.y) * push * 3.5 * sy * dt)
-    if (agl < 5) { fl.pos.y = g + 5; if (fl.speed < 30 && fl.engine) fl.speed = 30 }
+    if (agl < 5) { fl.pos.y = g + 5; if (fl.speed < 30) fl.speed = 30 }
   }
 
   // fade out, respawn above the clouds, fade in
@@ -209,7 +202,6 @@ export class Engine {
         this.rig.sq.copy(fl.quat)
         this.plane.trailL.clear(); this.plane.trailR.clear(); this.plane.scarf.clear()
         L.phase = 'fadein'; L.t = 0
-        this.emit({ engine: true })
       }
     } else {
       this.fade = Math.max(0, 1 - L.t / 1.2)
@@ -257,7 +249,7 @@ export class Engine {
     P.body.position.y = Math.sin(this.time * 1.7) * 0.04
     P.body.rotation.z = Math.sin(this.time * 1.1) * 0.01
     this.propSpeed = this.propSpeed ?? 40
-    const propTarget = fl.engine ? 18 + fl.throttle * 30 + fl.speed * 0.15 : fl.speed * 0.03
+    const propTarget = 18 + fl.throttle * 30 + fl.speed * 0.15
     this.propSpeed += (propTarget - this.propSpeed) * (1 - Math.exp(-sdt * 1.5))
     this.propAngle += sdt * this.propSpeed
     P.prop.rotation.z = this.propAngle
@@ -331,7 +323,7 @@ export class Engine {
     mark('terrain')
     this.life.update(sdt, this.time, fl, this.camera, this.audio)
     mark('life')
-    this.audio.update(fl.engine ? fl.speed : 0, fl.engine ? fl.throttle : 0, inside, fl.engine ? 0 : 1, fl.speed)
+    this.audio.update(fl.speed, fl.throttle, inside)
 
     if (this.useBloom) this.composer.render()
     else this.renderer.render(this.scene, this.camera)
