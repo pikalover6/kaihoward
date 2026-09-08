@@ -313,7 +313,8 @@ export class Engine {
 
     // terrain has its own haze so the ground seen through cloud breaks is always distant and soft
     const tu = this.terrain.uniforms
-    tu.uFogColor.value.copy(fogColorFor(Math.min(alt, CLOUD_Y - 400))).lerp(new THREE.Color('#b9cfe8'), 1 - below)
+    // the terrain fades into exactly the sky's haze colour so its outer edge is never visible
+    tu.uFogColor.value.copy(this.fogUniforms.color.value)
     tu.uFogDensity.value = Math.max(this.fogUniforms.density.value, 0.00029)
     tu.uSunI.value = THREE.MathUtils.lerp(0.95, 0.5, below)
     tu.uAmb.value = THREE.MathUtils.lerp(1.0, 0.95, below)

@@ -126,6 +126,7 @@ const puffFrag = /* glsl */ `
 precision highp float;
 uniform sampler2D uMap;
 uniform vec2 uSunLocal;
+uniform vec3 uCamUp;
 uniform vec3 uFogColor;
 uniform float uFogDensity, uOpacity;
 varying vec2 vUv;
@@ -141,7 +142,8 @@ void main(){
   float a = texture2D(uMap, uv).a;
   vec2 sl = uSunLocal / max(length(uSunLocal), 0.2);
   float lit = clamp(0.5 + 0.9 * dot(vLocal, sl), 0.0, 1.0);
-  float t = clamp(vLocal.y + 0.5, 0.0, 1.0);
+  // vertical shade gradient fades out when looking down on the puffs from above
+  float t = mix(0.85, clamp(vLocal.y + 0.5, 0.0, 1.0), clamp(uCamUp.y, 0.0, 1.0));
   vec3 shadow = S(0.50, 0.64, 0.92);
   vec3 litC = S(0.99, 0.99, 1.0);
   // thick interior is bluer, especially toward the bottom

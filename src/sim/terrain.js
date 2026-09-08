@@ -7,7 +7,7 @@ import { GROUND_Y, SUN_DIR } from './constants.js'
 // each with a hole where the finer level sits. Heights come from the vertex
 // shader (noise identical to the JS port) so the world is endless and costs no CPU.
 
-const LEVELS = 5, CELLS = 64, BASE = 12, HOLE0 = 18, HOLE1 = 46 // hole = 28 cells, finer level spans 32
+const LEVELS = 5, CELLS = 80, BASE = 12, HOLE0 = 22, HOLE1 = 58 // hole = 36 cells, finer level spans 40
 
 const vert = /* glsl */ `
 precision highp float;
