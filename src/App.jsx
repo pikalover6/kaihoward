@@ -3,7 +3,7 @@ import { Engine } from './sim/engine.js'
 import './App.css'
 
 const projects = [
-  { name: 'Terrainist', domain: 'terrainist.com', href: 'https://terrainist.com/' },
+  { name: 'Terrainist', domain: 'github.com', href: 'https://github.com/pikalover6/terrainist' },
   { name: 'GPT-2 Whisperer', domain: 'pikalover6.github.io', href: 'https://pikalover6.github.io/gpt2whisperer/' },
   { name: 'Claude Subagents Effort', domain: 'github.com', href: 'https://github.com/pikalover6/claude-subagents-effort' },
   { name: 'totally-not-an-llm', domain: 'huggingface.co', href: 'https://huggingface.co/totally-not-an-llm' },
