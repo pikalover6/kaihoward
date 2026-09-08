@@ -46,7 +46,6 @@ export default function App() {
           <span><kbd>↑↓←→</kbd> fly</span>
           <span><kbd>q e</kbd> rudder</span>
           <span><kbd>shift ctrl</kbd> throttle</span>
-          <span><kbd>space</kbd> barrel roll</span>
         </div>
       )}
       {!isTouch && (

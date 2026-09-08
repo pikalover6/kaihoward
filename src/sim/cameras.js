@@ -47,10 +47,13 @@ export class CameraRig {
       this.lookAt(override.pos, override.look, override.up || UP)
       T.fov = override.fov || 55
     } else if (this.mode === 'chase') {
-      this.sq.slerp(flight.quat, 1 - Math.exp(-dt * 3.2))
+      // follow faster while the plane is rotating quickly so loops stay framed
+      const spin = Math.min(6, Math.hypot(flight.pitchRate, flight.rollRate, flight.turnRate))
+      this.sq.slerp(flight.quat, 1 - Math.exp(-dt * (3.2 + spin * 1.1)))
       const off = _v2.set(0, 2.7, 11.5).applyQuaternion(this.sq)
       const eye = _v3.copy(flight.pos).add(off)
-      const up = _v2.copy(UP).applyQuaternion(this.sq).multiplyScalar(0.55).add(UP).normalize()
+      // the camera's up is the plane's own up: blending in world-up forced a 180° roll over the top of a loop
+      const up = _v2.copy(UP).applyQuaternion(this.sq)
       const look = _v.copy(FORWARD).applyQuaternion(this.sq).multiplyScalar(14).add(flight.pos)
       look.y += 0.8
       this.lookAt(eye, look, up)

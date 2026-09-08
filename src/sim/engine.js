@@ -111,7 +111,6 @@ export class Engine {
     if (k === 'v') this.cycleView()
     else if (k === 'f') this.toggleDraw()
     else if (k === 'm') this.toggleSound()
-    else if (k === ' ') { if (!this.flight.locked && !this.flight.autopilot) this.flight.startBarrelRoll(this.input.has('a', 'arrowleft') ? -1 : 1) }
     else if (k === 'r') this.respawn()
     else if (k === 'escape') { if (this.draw.active) this.toggleDraw() }
   }

@@ -13,7 +13,6 @@ behind the `kh` monogram in the top-left corner.
 | arrows / WASD | pitch and roll |
 | Q / E | rudder |
 | shift / ctrl | throttle |
-| space | barrel roll |
 | R | respawn above the clouds |
 | V | cycle view (chase, cockpit, cinematic, orbit) |
 | F | draw a path with the mouse, the plane flies it |

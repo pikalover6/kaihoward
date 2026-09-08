@@ -15,8 +15,6 @@ export class Flight {
     this.rollRate = 0
     this.pitchRate = 0
     this.gLoad = 0
-    this.barrel = 0            // remaining barrel roll angle
-    this.barrelDir = 1
     this.autopilot = null      // when set, {forward(desired), speed} overrides input
     this.locked = false        // control taken by a scripted sequence
     this.respawn()
@@ -28,7 +26,6 @@ export class Flight {
     this.speed = 60
     this.throttle = 0.55
     this.in.pitch = this.in.roll = this.in.yaw = 0
-    this.barrel = 0
     this.autopilot = null
     this.locked = false
   }
@@ -45,10 +42,6 @@ export class Flight {
   rotateWorld(axis, angle) {
     _q.setFromAxisAngle(axis, angle)
     this.quat.premultiply(_q).normalize()
-  }
-
-  startBarrelRoll(dir = 1) {
-    if (this.barrel <= 0) { this.barrel = Math.PI * 2; this.barrelDir = dir }
   }
 
   step(dt, input) {
@@ -94,12 +87,6 @@ export class Flight {
       pitchRate = inp.pitch * 1.5
       rollRate = inp.roll * 2.0
       yawRate = inp.yaw * 0.9
-      if (this.barrel > 0) {
-        const r = Math.min(this.barrel, 5.2 * dt)
-        this.barrel -= r
-        rollRate += (r / dt) * this.barrelDir
-        pitchRate += 0.35
-      }
       // gentle self-levelling when hands are off
       const level = 1 - Math.abs(inp.roll)
       const sy = _u.y >= 0 ? 1 : -1
