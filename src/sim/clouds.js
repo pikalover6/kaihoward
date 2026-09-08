@@ -63,6 +63,7 @@ void main(){
   }
   float fogF = 1.0 - exp(-uFogDensity * uFogDensity * vFogDepth * vFogDepth);
   c = mix(c, uFogColor, fogF);
+  if (any(isnan(c))) c = uFogColor;
   gl_FragColor = vec4(c, alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -154,6 +155,7 @@ void main(){
   float fogF = 1.0 - exp(-uFogDensity * uFogDensity * vFogDepth * vFogDepth);
   c = mix(c, uFogColor, fogF);
   a *= uOpacity * smoothstep(0.15, 0.7, vDist) * (1.0 - 0.25 * vDark);
+  if (any(isnan(c)) || isnan(a)) discard;
   gl_FragColor = vec4(c, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

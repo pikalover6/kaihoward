@@ -111,6 +111,7 @@ void main(){
   under *= 1.0 - 0.14 * smoothstep(0.05, 0.6, y);
   col = mix(col, under, uBelow);
 
+  if (any(isnan(col))) col = uFogColor;
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

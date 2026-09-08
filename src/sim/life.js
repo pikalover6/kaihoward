@@ -89,14 +89,16 @@ uniform float uTime;
 varying vec3 vN, vV;
 varying float vPhase;
 void main(){
-  float nv = clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0);
+  vec3 nn = normalize(vN + vec3(1e-6)), vv = normalize(vV + vec3(1e-6));
+  float nv = clamp(dot(nn, vv), 0.0, 1.0);
   float fres = pow(1.0 - nv, 2.5);
   float h = nv * 1.6 + vPhase + uTime * 0.08;
   vec3 iri = 0.5 + 0.5 * cos(6.2831 * (h + vec3(0.0, 0.33, 0.67)));
-  vec3 r = reflect(-normalize(vV), normalize(vN));
+  vec3 r = reflect(-vv, nn);
   float spec = pow(max(dot(r, uSunDir), 0.0), 90.0);
   vec3 c = iri * fres * 0.9 + vec3(1.0) * spec * 1.2 + vec3(0.6, 0.85, 1.0) * fres * 0.3;
   float a = fres * 0.85 + spec + 0.03;
+  if (any(isnan(c)) || isnan(a)) discard;
   gl_FragColor = vec4(c * a, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

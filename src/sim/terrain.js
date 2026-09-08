@@ -40,8 +40,10 @@ ${GLSL_NOISE}
 ${GLSL_SRGB}
 void main(){
   vec3 dx = dFdx(vWorld), dz = dFdy(vWorld);
-  vec3 n = normalize(cross(dz, dx));
-  n *= sign(n.y + 1e-6);
+  vec3 cr = cross(dz, dx);
+  float crl = length(cr);
+  vec3 n = crl > 1e-9 ? cr / crl : vec3(0.0, 1.0, 0.0);
+  if (n.y < 0.0) n = -n;
   float slope = length(n.xz) / max(n.y, 1e-3);
   vec2 p = vWorld.xz;
   float var1 = snoise(p / 300.0) * 0.5 + 0.5;
@@ -75,7 +77,9 @@ void main(){
   }
   float fogF = 1.0 - exp(-uFogDensity * uFogDensity * vFogDepth * vFogDepth);
   col = mix(col, uFogColor, fogF);
-  gl_FragColor = vec4(col, 1.0);
+  // never let a NaN reach the bloom pass (it would smear into a bright square)
+  if (any(isnan(col)) || any(isinf(col))) col = uFogColor;
+  gl_FragColor = vec4(clamp(col, 0.0, 8.0), 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
