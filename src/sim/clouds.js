@@ -1,19 +1,24 @@
 import * as THREE from 'three'
-import { GLSL_NOISE, GLSL_SRGB, mulberry32 } from './noise.js'
+import { GLSL_NOISE, GLSL_SRGB, GLSL_COVER, mulberry32, cloudCover, fbm } from './noise.js'
 import { SUN_DIR, CLOUD_Y } from './constants.js'
 
 // ---------------------------------------------------------------- cloud sea
 const seaVert = /* glsl */ `
 precision highp float;
 uniform float uTime;
+uniform vec2 uWorldOffset;
 varying vec3 vWorld;
 varying float vFogDepth;
 ${GLSL_NOISE}
+${GLSL_COVER}
 void main(){
   vec3 wp = (modelMatrix * vec4(position, 1.0)).xyz;
-  float h = fbm3(wp.xz * 0.0011 + uTime * 0.003);
-  wp.y += h * 36.0;
-  vWorld = wp;
+  vec2 w = wp.xz + uWorldOffset;
+  float cv = cloudCover(w);
+  float edge = smoothstep(-0.1, 0.2, cv);
+  float h = fbm3(w * 0.0011 + uTime * 0.003);
+  wp.y += h * 30.0 * edge - (1.0 - edge) * 25.0;
+  vWorld = vec3(w.x, wp.y, w.y);
   vec4 mv = viewMatrix * vec4(wp, 1.0);
   vFogDepth = -mv.z;
   gl_Position = projectionMatrix * mv;
@@ -28,23 +33,28 @@ varying vec3 vWorld;
 varying float vFogDepth;
 ${GLSL_NOISE}
 ${GLSL_SRGB}
+${GLSL_COVER}
 float height(vec2 p){
-  return fbm(p * 0.0011 + uTime * 0.003) + fbm3(p * 0.0075 - uTime * 0.006) * 0.28;
+  return fbm(p * 0.0011 + uTime * 0.003) + fbm3(p * 0.0075 - uTime * 0.006) * 0.16;
 }
 void main(){
   vec2 p = vWorld.xz;
+  float cv = cloudCover(p);
+  float detail = fbm3(p * 0.0025 + 1.0) * 0.5 + snoise(p * 0.012) * 0.06;
+  float alpha = smoothstep(-0.2, 0.04, cv + detail * 0.07);
+  if (alpha < 0.01) discard;
   float e = 14.0;
   float n = height(p);
   float nx = height(p + vec2(e, 0.0));
   float nz = height(p + vec2(0.0, e));
-  vec3 nrm = normalize(vec3(-(nx - n) * 9.0, 1.0, -(nz - n) * 9.0));
+  vec3 nrm = normalize(vec3(-(nx - n) * 6.5, 1.0, -(nz - n) * 6.5));
   float diff = clamp(dot(nrm, uSunDir), 0.0, 1.0);
   float cov = n * 0.5 + 0.5;
   vec3 shadow = S(0.60, 0.74, 0.95);
   vec3 lit = S(0.97, 0.98, 1.0);
   vec3 c = mix(shadow, lit, clamp(diff * 0.85 + 0.2 * smoothstep(0.35, 0.85, cov), 0.0, 1.0));
-  vec3 gap = S(0.42, 0.62, 0.92);
-  c = mix(gap, c, smoothstep(0.3, 0.55, cov));
+  // thin, bluish cloud near the breaks
+  c = mix(S(0.72, 0.82, 0.97), c, smoothstep(0.0, 0.5, alpha));
   float rim = pow(clamp(1.0 - abs(nrm.y), 0.0, 1.0), 2.0);
   c += S(1.0, 1.0, 1.0) * rim * 0.12;
   if (!gl_FrontFacing) {
@@ -53,7 +63,7 @@ void main(){
   }
   float fogF = 1.0 - exp(-uFogDensity * uFogDensity * vFogDepth * vFogDepth);
   c = mix(c, uFogColor, fogF);
-  gl_FragColor = vec4(c, 1.0);
+  gl_FragColor = vec4(c, alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -88,6 +98,7 @@ attribute float iScale;
 attribute float iRot;
 attribute float iVar;
 attribute float iDark;
+attribute float iAspect;
 uniform vec3 uCamRight, uCamUp;
 varying vec2 vUv;
 varying vec2 vLocal;
@@ -98,7 +109,8 @@ varying float vDark;
 void main(){
   vDark = iDark;
   float c = cos(iRot), s = sin(iRot);
-  vec2 p = vec2(position.x * c - position.y * s, position.x * s + position.y * c);
+  vec2 q = vec2(position.x * iAspect, position.y);
+  vec2 p = vec2(q.x * c - q.y * s, q.x * s + q.y * c);
   vec3 wp = iPos + (uCamRight * p.x + uCamUp * p.y) * iScale;
   vUv = uv;
   vLocal = position.xy;
@@ -126,11 +138,15 @@ void main(){
   vec2 cell = vec2(mod(vVar, 2.0), floor(vVar / 2.0));
   vec2 uv = (vUv + cell) * 0.5;
   float a = texture2D(uMap, uv).a;
-  float lit = 0.5 + 0.5 * dot(normalize(vLocal + vec2(0.0001)), normalize(uSunLocal + vec2(0.0001)));
-  float t = vLocal.y + 0.5;
-  vec3 shadow = S(0.58, 0.71, 0.94);
-  vec3 litC = S(0.98, 0.99, 1.0);
-  vec3 c = mix(shadow, litC, clamp(lit * 0.55 + t * 0.55, 0.0, 1.0));
+  vec2 sl = uSunLocal / max(length(uSunLocal), 0.2);
+  float lit = clamp(0.5 + 0.9 * dot(vLocal, sl), 0.0, 1.0);
+  float t = clamp(vLocal.y + 0.5, 0.0, 1.0);
+  vec3 shadow = S(0.60, 0.72, 0.94);
+  vec3 litC = S(0.99, 0.99, 1.0);
+  vec3 c = mix(shadow, litC, clamp(lit * 0.5 + t * 0.6, 0.0, 1.0));
+  // silver lining on thin edges facing the sun
+  float rim = smoothstep(0.45, 0.05, a) * lit;
+  c += S(1.0, 1.0, 1.0) * rim * 0.35;
   vec3 under = mix(S(0.55, 0.6, 0.72), S(0.72, 0.76, 0.86), t);
   c = mix(c, under, vDark);
   float fogF = 1.0 - exp(-uFogDensity * uFogDensity * vFogDepth * vFogDepth);
@@ -143,45 +159,53 @@ void main(){
 `
 
 function makePuffAtlas() {
-  const size = 512
+  const size = 1024, cell = 512
   const cv = document.createElement('canvas')
   cv.width = cv.height = size
   const ctx = cv.getContext('2d')
   const rnd = mulberry32(12)
   ctx.clearRect(0, 0, size, size)
-  for (let cy = 0; cy < 2; cy++) {
-    for (let cx = 0; cx < 2; cx++) {
-      const ox = cx * 256, oy = cy * 256
-      const blobs = 14 + Math.floor(rnd() * 8)
-      for (let i = 0; i < blobs; i++) {
-        const ang = rnd() * Math.PI * 2
-        const rad = rnd() * 60
-        const x = ox + 128 + Math.cos(ang) * rad
-        const y = oy + 138 + Math.sin(ang) * rad * 0.6 - rnd() * 20
-        const r = 40 + rnd() * 55
-        const g = ctx.createRadialGradient(x, y, 0, x, y, r)
-        const a = 0.28 + rnd() * 0.25
-        g.addColorStop(0, `rgba(255,255,255,${a})`)
-        g.addColorStop(0.55, `rgba(255,255,255,${a * 0.45})`)
-        g.addColorStop(1, 'rgba(255,255,255,0)')
-        ctx.fillStyle = g
-        ctx.fillRect(x - r, y - r, r * 2, r * 2)
-      }
-      // vignette so nothing touches the cell edge
-      const img = ctx.getImageData(ox, oy, 256, 256)
-      const d = img.data
-      for (let y = 0; y < 256; y++) {
-        for (let x = 0; x < 256; x++) {
-          const dx = (x - 128) / 128, dy = (y - 128) / 128
-          const rr = Math.sqrt(dx * dx + dy * dy)
-          const v = Math.max(0, Math.min(1, (1 - rr) * 2.2))
-          const i = (y * 256 + x) * 4
-          d[i] = 255; d[i + 1] = 255; d[i + 2] = 255
-          d[i + 3] = Math.min(255, d[i + 3] * v * 1.35)
-        }
-      }
-      ctx.putImageData(img, ox, oy)
+  const shapes = [
+    { blobs: 18, sx: 0.32, sy: 0.16, r: [0.14, 0.24] },   // wide cumulus
+    { blobs: 10, sx: 0.2, sy: 0.2, r: [0.16, 0.3] },      // round puff
+    { blobs: 26, sx: 0.36, sy: 0.12, r: [0.09, 0.2] },    // stretched
+    { blobs: 14, sx: 0.26, sy: 0.22, r: [0.1, 0.26] },    // lumpy
+  ]
+  for (let k = 0; k < 4; k++) {
+    const ox = (k % 2) * cell, oy = Math.floor(k / 2) * cell
+    const sh = shapes[k]
+    for (let i = 0; i < sh.blobs; i++) {
+      const ang = rnd() * Math.PI * 2, rad = Math.sqrt(rnd())
+      const x = ox + cell * (0.5 + Math.cos(ang) * rad * sh.sx)
+      const y = oy + cell * (0.54 + Math.sin(ang) * rad * sh.sy - rnd() * 0.06)
+      const r = cell * (sh.r[0] + rnd() * (sh.r[1] - sh.r[0]))
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+      const a = 0.22 + rnd() * 0.2
+      g.addColorStop(0, `rgba(255,255,255,${a})`)
+      g.addColorStop(0.5, `rgba(255,255,255,${a * 0.5})`)
+      g.addColorStop(1, 'rgba(255,255,255,0)')
+      ctx.fillStyle = g
+      ctx.fillRect(x - r, y - r, r * 2, r * 2)
     }
+    // erode with noise so edges are ragged, and keep everything off the cell border
+    const img = ctx.getImageData(ox, oy, cell, cell)
+    const d = img.data
+    for (let y = 0; y < cell; y++) {
+      for (let x = 0; x < cell; x++) {
+        const dx = (x - cell / 2) / (cell / 2), dy = (y - cell / 2) / (cell / 2)
+        const rr = Math.sqrt(dx * dx + dy * dy)
+        const v = Math.max(0, Math.min(1, (1 - rr) * 2.6))
+        const nz = fbm((x + k * 900) / 70, (y + k * 300) / 70) * 0.5 + 0.5
+        const nz2 = fbm((x + k * 130) / 22, (y + k * 70) / 22) * 0.5 + 0.5
+        const i = (y * cell + x) * 4
+        let a = d[i + 3] / 255 * 1.9 * v
+        a *= 0.55 + 0.65 * nz + 0.3 * (nz2 - 0.5)
+        a = Math.max(0, Math.min(1, (a - 0.08) * 1.15))
+        d[i] = 255; d[i + 1] = 255; d[i + 2] = 255
+        d[i + 3] = Math.round(a * 255)
+      }
+    }
+    ctx.putImageData(img, ox, oy)
   }
   const tex = new THREE.CanvasTexture(cv)
   tex.colorSpace = THREE.SRGBColorSpace
@@ -202,6 +226,7 @@ export class Clouds {
     this.seaStep = seaSize / seaSeg
     this.seaUniforms = {
       uTime: { value: 0 },
+      uWorldOffset: { value: new THREE.Vector2(0, 0) },
       uSunDir: { value: SUN_DIR.clone() },
       uFogColor: fogUniforms.color,
       uFogDensity: fogUniforms.density,
@@ -213,7 +238,9 @@ export class Clouds {
       vertexShader: seaVert,
       fragmentShader: seaFrag,
       side: THREE.DoubleSide,
+      transparent: true,
     }))
+    this.sea.renderOrder = 2
     this.sea.frustumCulled = false
     this.sea.position.y = CLOUD_Y
     scene.add(this.sea)
@@ -223,7 +250,7 @@ export class Clouds {
     cirGeo.rotateX(-Math.PI / 2)
     this.cirrus = new THREE.Mesh(cirGeo, new THREE.ShaderMaterial({
       uniforms: this.seaUniforms,
-      vertexShader: seaVert.replace('wp.y += h * 36.0;', ''),
+      vertexShader: seaVert.replace('wp.y += h * 30.0 * edge - (1.0 - edge) * 25.0;', ''),
       fragmentShader: cirrusFrag,
       side: THREE.DoubleSide,
       transparent: true,
@@ -236,19 +263,34 @@ export class Clouds {
 
     // puffs
     this.wrapR = 3600
+    this.origin = { x: 0, z: 0 }
     this.buildPuffs()
+  }
+
+  // world-space coverage test (accounts for origin shifting)
+  covered(x, z, margin = 0.05) { return cloudCover(x + this.origin.x, z + this.origin.z) > margin }
+
+  // pick a covered spot inside the wrap square around `anchor`
+  pickCovered(rnd, anchor, R, margin) {
+    for (let t = 0; t < 12; t++) {
+      const x = anchor.x + (rnd() * 2 - 1) * R, z = anchor.z + (rnd() * 2 - 1) * R
+      if (this.covered(x, z, margin)) return [x, z]
+    }
+    return [anchor.x + (rnd() * 2 - 1) * R, anchor.z + (rnd() * 2 - 1) * R]
   }
 
   buildPuffs() {
     const rnd = mulberry32(77)
-    const puffs = [] // {x,y,z,s,rot,v, cluster}
+    this.rnd = rnd
+    const puffs = [] // {x,y,z,s,rot,v,asp,dark}
     const clusters = []
     const R = this.wrapR
-    // big cumulus clusters sitting on the sea
-    for (let c = 0; c < 150; c++) {
-      const cx = (rnd() * 2 - 1) * R, cz = (rnd() * 2 - 1) * R
+    const zero = { x: 0, z: 0 }
+    // cumulus clusters sitting on the deck
+    for (let c = 0; c < 130; c++) {
+      const [cx, cz] = this.pickCovered(rnd, zero, R, 0.08)
       const n = 5 + Math.floor(rnd() * 9)
-      const spread = 90 + rnd() * 220
+      const spread = 90 + rnd() * 240
       const big = 0.7 + rnd() * 0.9
       const members = []
       for (let i = 0; i < n; i++) {
@@ -257,11 +299,11 @@ export class Clouds {
         members.push(puffs.length)
         puffs.push({
           x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r * 0.7,
-          y: CLOUD_Y + 38 + s * 0.42 + rnd() * 40 * big,
-          s, rot: (rnd() - 0.5) * 0.6, v: Math.floor(rnd() * 4),
+          y: CLOUD_Y + 30 + s * 0.36 + rnd() * 30 * big,
+          s, rot: (rnd() - 0.5) * 0.5, v: Math.floor(rnd() * 4), asp: 1.1 + rnd() * 0.7,
         })
       }
-      clusters.push({ members, base: cx, bz: cz })
+      clusters.push({ members, deck: true, margin: 0.08 })
     }
     // wandering small puffs at flight altitude
     for (let c = 0; c < 70; c++) {
@@ -272,13 +314,13 @@ export class Clouds {
       for (let i = 0; i < n; i++) {
         const s = 22 + rnd() * 55
         members.push(puffs.length)
-        puffs.push({ x: cx + (rnd() - 0.5) * 60, z: cz + (rnd() - 0.5) * 60, y: y + (rnd() - 0.5) * 25, s, rot: (rnd() - 0.5) * 0.8, v: Math.floor(rnd() * 4) })
+        puffs.push({ x: cx + (rnd() - 0.5) * 60, z: cz + (rnd() - 0.5) * 60, y: y + (rnd() - 0.5) * 25, s, rot: (rnd() - 0.5) * 0.8, v: Math.floor(rnd() * 4), asp: 1.2 + rnd() * 0.8 })
       }
       clusters.push({ members })
     }
-    // grey cloud bases hanging under the sea, seen when diving through
-    for (let c = 0; c < 90; c++) {
-      const cx = (rnd() * 2 - 1) * R, cz = (rnd() * 2 - 1) * R
+    // grey cloud bases hanging under the deck, seen when diving through
+    for (let c = 0; c < 80; c++) {
+      const [cx, cz] = this.pickCovered(rnd, zero, R, 0.1)
       const n = 3 + Math.floor(rnd() * 6)
       const spread = 120 + rnd() * 260
       const members = []
@@ -286,9 +328,9 @@ export class Clouds {
         const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * spread
         const s = 70 + rnd() * 120
         members.push(puffs.length)
-        puffs.push({ x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r * 0.7, y: CLOUD_Y - 45 - s * 0.35 - rnd() * 60, s, rot: (rnd() - 0.5) * 0.6, v: Math.floor(rnd() * 4), dark: 1 })
+        puffs.push({ x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r * 0.7, y: CLOUD_Y - 30 - s * 0.25 - rnd() * 30, s, rot: (rnd() - 0.5) * 0.6, v: Math.floor(rnd() * 4), asp: 1.4 + rnd() * 0.8, dark: 1 })
       }
-      clusters.push({ members })
+      clusters.push({ members, deck: true, margin: 0.1 })
     }
     this.puffs = puffs
     this.clusters = clusters
@@ -303,12 +345,14 @@ export class Clouds {
     this.aRot = new THREE.InstancedBufferAttribute(new Float32Array(N), 1)
     this.aVar = new THREE.InstancedBufferAttribute(new Float32Array(N), 1)
     this.aDark = new THREE.InstancedBufferAttribute(new Float32Array(N), 1)
-    for (const a of [this.aPos, this.aScale, this.aRot, this.aVar, this.aDark]) a.setUsage(THREE.DynamicDrawUsage)
+    this.aAsp = new THREE.InstancedBufferAttribute(new Float32Array(N), 1)
+    for (const a of [this.aPos, this.aScale, this.aRot, this.aVar, this.aDark, this.aAsp]) a.setUsage(THREE.DynamicDrawUsage)
     geo.setAttribute('iPos', this.aPos)
     geo.setAttribute('iScale', this.aScale)
     geo.setAttribute('iRot', this.aRot)
     geo.setAttribute('iVar', this.aVar)
     geo.setAttribute('iDark', this.aDark)
+    geo.setAttribute('iAspect', this.aAsp)
     geo.instanceCount = N
     this.puffUniforms = {
       uMap: { value: makePuffAtlas() },
@@ -335,6 +379,8 @@ export class Clouds {
   }
 
   shift(dx, dz) {
+    this.origin.x += dx; this.origin.z += dz
+    this.seaUniforms.uWorldOffset.value.set(this.origin.x, this.origin.z)
     for (const p of this.puffs) { p.x -= dx; p.z -= dz }
   }
 
@@ -372,7 +418,18 @@ export class Clouds {
       else if (p0.x - anchor.x < -R) mx = 2 * R
       if (p0.z - anchor.z > R) mz = -2 * R
       else if (p0.z - anchor.z < -R) mz = 2 * R
-      if (mx || mz) for (const i of c.members) { this.puffs[i].x += mx; this.puffs[i].z += mz }
+      if (mx || mz) {
+        if (c.deck) {
+          // deck clusters must land on cloud, not in a break: re-place relative to the cluster centre
+          const [nx, nz] = this.pickCovered(this.rnd, { x: anchor.x, z: anchor.z }, R, c.margin)
+          const ox = p0.x + mx, oz = p0.z + mz
+          const covered = this.covered(ox, oz, c.margin)
+          const tx = covered ? ox : nx, tz = covered ? oz : nz
+          for (const i of c.members) { this.puffs[i].x += tx - p0.x; this.puffs[i].z += tz - p0.z }
+        } else {
+          for (const i of c.members) { this.puffs[i].x += mx; this.puffs[i].z += mz }
+        }
+      }
     }
 
     // billboard basis
@@ -392,14 +449,14 @@ export class Clouds {
       }
       const dist = this.dist
       const ord = Array.from(this.order).sort((a, b) => dist[b] - dist[a])
-      const pa = this.aPos.array, sa = this.aScale.array, ra = this.aRot.array, va = this.aVar.array, da = this.aDark.array
+      const pa = this.aPos.array, sa = this.aScale.array, ra = this.aRot.array, va = this.aVar.array, da = this.aDark.array, aa = this.aAsp.array
       for (let k = 0; k < N; k++) {
         const p = this.puffs[ord[k]]
         pa[k * 3] = p.x; pa[k * 3 + 1] = p.y; pa[k * 3 + 2] = p.z
-        sa[k] = p.s; ra[k] = p.rot; va[k] = p.v; da[k] = p.dark || 0
+        sa[k] = p.s; ra[k] = p.rot; va[k] = p.v; da[k] = p.dark || 0; aa[k] = p.asp || 1
       }
       this.aPos.needsUpdate = true; this.aScale.needsUpdate = true
-      this.aRot.needsUpdate = true; this.aVar.needsUpdate = true; this.aDark.needsUpdate = true
+      this.aRot.needsUpdate = true; this.aVar.needsUpdate = true; this.aDark.needsUpdate = true; this.aAsp.needsUpdate = true
     }
   }
 }

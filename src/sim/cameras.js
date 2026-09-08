@@ -94,10 +94,14 @@ export class CameraRig {
     }
 
     // smooth toward target
-    let rate = 30
-    if (this.transition > 0) { this.transition -= dt; rate = 5 }
-    if (override) rate = override.rate || 4
-    const a = this.first ? 1 : 1 - Math.exp(-dt * rate)
+    let a = 1
+    if (this.transition > 0) {
+      this.transition -= dt
+      const k = 1 - Math.max(0, this.transition) / 0.9
+      a = 1 - Math.exp(-dt * THREE.MathUtils.lerp(5, 40, k * k))
+    }
+    if (override) a = 1 - Math.exp(-dt * (override.rate || 4))
+    if (this.first) a = 1
     this.first = false
     const cur = this.cur
     cur.pos.lerp(T.pos, a)

@@ -10,7 +10,7 @@ import { Flight } from './flight.js'
 import { Input } from './input.js'
 import { CameraRig } from './cameras.js'
 import { DrawMode } from './drawpath.js'
-import { Terrain } from './terrain.js'
+import { Terrain, GLSL_NOISE as TN, GLSL_TERRAIN as TT, terrainH as th } from './terrain.js'
 import { Life } from './life.js'
 import { SkyAudio } from './audio.js'
 import { SUN_DIR, CLOUD_Y, GROUND_Y, ORIGIN_SHIFT, UP } from './constants.js'
@@ -22,7 +22,7 @@ export class Engine {
   constructor(canvas, onState) {
     this.canvas = canvas
     this.onState = onState
-    this.state = { mode: 'chase', draw: 'off', sound: false, landing: false }
+    this.state = { mode: 'chase', draw: 'off', sound: false, landing: false, engine: true }
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -58,7 +58,7 @@ export class Engine {
     this.input = new Input(canvas)
     this.rig = new CameraRig(this.camera)
     this.draw = new DrawMode(this.scene, this.camera, this.flight, this.fogUniforms)
-    this.terrain = new Terrain(this.scene)
+    this.terrain = new Terrain(this.scene, this.fogUniforms)
     this.life = new Life(this.scene, this.fogUniforms)
     this.audio = new SkyAudio()
 
@@ -99,7 +99,7 @@ export class Engine {
     this._loop = () => this.loop()
     requestAnimationFrame(this._loop)
     this.emit()
-    if (import.meta.env.DEV) window.__engine = this
+    if (import.meta.env.DEV) { window.__engine = this; window.__THREE = THREE; window.__glsl = { TN, TT, th } }
   }
 
   emit(partial) {
@@ -112,7 +112,22 @@ export class Engine {
     else if (k === 'f') this.toggleDraw()
     else if (k === 'm') this.toggleSound()
     else if (k === ' ') { if (!this.flight.locked && !this.flight.autopilot) this.flight.startBarrelRoll(this.input.has('a', 'arrowleft') ? -1 : 1) }
+    else if (k === 'x') this.toggleEngine()
+    else if (k === 'r') this.respawn()
     else if (k === 'escape') { if (this.draw.active) this.toggleDraw() }
+  }
+
+  toggleEngine() {
+    if (this.flight.locked) return
+    this.flight.engine = !this.flight.engine
+    this.emit({ engine: this.flight.engine })
+  }
+
+  respawn() {
+    if (this.landing) return
+    if (this.draw.active) { this.draw.exit(); this.timeScale = 1; this.emit({ draw: 'off' }) }
+    this.landing = { phase: 'fade', t: 0 }
+    this.flight.locked = true
   }
 
   cycleView() {
@@ -167,59 +182,38 @@ export class Engine {
     this.camera.position.x -= dx; this.camera.position.z -= dz
   }
 
-  updateLanding(dt) {
+  // you can't crash: the ground gently pushes the nose up and holds the plane above it
+  updateFloor(dt) {
     const fl = this.flight
     const g = this.terrain.heightAt(fl.pos.x, fl.pos.z)
     const agl = fl.pos.y - g
+    if (agl > 60) return
     const f = fl.forward(_v)
-    if (!this.landing) {
-      if (!this.terrain.active) return
-      const need = Math.max(28, fl.speed * 0.7)
-      if (agl < need && f.y < 0.15) {
-        if (this.draw.active) { this.draw.exit(); this.timeScale = 1; this.emit({ draw: 'off' }) }
-        this.landing = { phase: 'flare', t: 0, heading: Math.atan2(-f.x, -f.z) }
-        fl.locked = true
-        fl.autopilot = { forward: new THREE.Vector3(), maxRate: 2.4, speed: 34 }
-        this.emit({ landing: true })
-      }
-      return
-    }
+    const sy = fl.up(_v2).y >= 0 ? 1 : -1
+    const push = THREE.MathUtils.clamp(1 - agl / 60, 0, 1)
+    if (f.y < 0.05) fl.rotateLocal(new THREE.Vector3(1, 0, 0), (0.05 - f.y) * push * 3.5 * sy * dt)
+    if (agl < 5) { fl.pos.y = g + 5; if (fl.speed < 30 && fl.engine) fl.speed = 30 }
+  }
+
+  // fade out, respawn above the clouds, fade in
+  updateRespawn(dt) {
     const L = this.landing
+    if (!L) return
     L.t += dt
-    // safety: if the ground somehow went away or the approach drags on, just fade and respawn
-    if ((L.phase === 'flare' || L.phase === 'glide') && (agl > 600 || L.t > 14)) { L.phase = 'fade'; L.t = 0 }
-    const fh = _v2.set(-Math.sin(L.heading), 0, -Math.cos(L.heading))
-    const ap = fl.autopilot
-    if (L.phase === 'flare') {
-      ap.forward.copy(fh).addScaledVector(UP, 0.06).normalize()
-      ap.speed = 32
-      if (fl.pos.y < g + 5) fl.pos.y += (g + 5 - fl.pos.y) * Math.min(1, dt * 4)
-      if (L.t > 1.2 && f.y > -0.05) { L.phase = 'glide'; L.t = 0 }
-    } else if (L.phase === 'glide') {
-      ap.forward.copy(fh).addScaledVector(UP, -THREE.MathUtils.clamp(agl / 50, 0.08, 0.3)).normalize()
-      ap.speed = 26
-      if (agl <= 1.35) { L.phase = 'roll'; L.t = 0; fl.pos.y = g + 1.3 }
-    } else if (L.phase === 'roll') {
-      ap.forward.copy(fh)
-      ap.speed = 0
-      fl.speed = Math.max(0, fl.speed - dt * 9)
-      fl.pos.y += (g + 1.3 - fl.pos.y) * Math.min(1, dt * 10)
-      if (fl.speed < 5 || L.t > 5) { L.phase = 'fade'; L.t = 0 }
-    } else if (L.phase === 'fade') {
-      ap.speed = 0
-      fl.speed = Math.max(0, fl.speed - dt * 9)
-      fl.pos.y += (g + 1.3 - fl.pos.y) * Math.min(1, dt * 10)
-      this.fade = Math.min(1, L.t / 1.2)
-      if (L.t > 1.7) {
+    const fl = this.flight
+    if (L.phase === 'fade') {
+      this.fade = Math.min(1, L.t / 0.7)
+      if (L.t > 0.9) {
         fl.respawn()
         this.rig.first = true
         this.rig.sq.copy(fl.quat)
         this.plane.trailL.clear(); this.plane.trailR.clear(); this.plane.scarf.clear()
         L.phase = 'fadein'; L.t = 0
+        this.emit({ engine: true })
       }
-    } else if (L.phase === 'fadein') {
-      this.fade = Math.max(0, 1 - L.t / 1.4)
-      if (L.t > 1.4) { this.landing = null; this.emit({ landing: false }) }
+    } else {
+      this.fade = Math.max(0, 1 - L.t / 1.2)
+      if (L.t > 1.2) this.landing = null
     }
   }
 
@@ -248,7 +242,8 @@ export class Engine {
       if (!this.draw.active) this.timeScale = 1
       this.emit({ draw: this.draw.active ? this.draw.state : 'off' })
     }
-    this.updateLanding(sdt)
+    this.updateFloor(sdt)
+    this.updateRespawn(dt)
     this.shiftOrigin()
 
     // plane visuals
@@ -258,9 +253,12 @@ export class Engine {
     // little bob and prop
     P.body.position.y = Math.sin(this.time * 1.7) * 0.04
     P.body.rotation.z = Math.sin(this.time * 1.1) * 0.01
-    this.propAngle += sdt * (18 + fl.throttle * 30 + fl.speed * 0.15)
+    this.propSpeed = this.propSpeed ?? 40
+    const propTarget = fl.engine ? 18 + fl.throttle * 30 + fl.speed * 0.15 : fl.speed * 0.03
+    this.propSpeed += (propTarget - this.propSpeed) * (1 - Math.exp(-sdt * 1.5))
+    this.propAngle += sdt * this.propSpeed
     P.prop.rotation.z = this.propAngle
-    P.blur.material.opacity = 0.18
+    P.blur.material.opacity = THREE.MathUtils.clamp((this.propSpeed - 8) / 30, 0, 0.18)
     P.pilot.visible = this.rig.mode !== 'cockpit'
     P.scarf.mesh.visible = P.pilot.visible
     // trails
@@ -288,6 +286,8 @@ export class Engine {
     // camera
     const override = this.draw.active ? this.draw.cameraTarget() : null
     this.rig.update(dt, fl, inp, override)
+    const camFloor = this.terrain.heightAt(this.camera.position.x, this.camera.position.z) + 2.5
+    if (this.camera.position.y < camFloor) { this.camera.position.y = camFloor; this.rig.cur.pos.y = camFloor }
     this.camera.updateMatrixWorld()
 
     // atmosphere by altitude
@@ -297,22 +297,31 @@ export class Engine {
     this.fogUniforms.density.value = fogDensityFor(alt) + inside * 0.012
     this.scene.fog.density = this.fogUniforms.density.value
     const below = THREE.MathUtils.smoothstep(-(alt - CLOUD_Y), 40, 260)
-    const nearGround = THREE.MathUtils.smoothstep(-(alt - CLOUD_Y), 9000, 13500)
+    const nearGround = THREE.MathUtils.smoothstep(-(alt - CLOUD_Y), 1800, 3200)
     this.sun.intensity = THREE.MathUtils.lerp(2.4, 0.9, below) * (1 - inside * 0.5)
     this.sun.color.set('#fff4e2').lerp(new THREE.Color('#dfe8f4'), below)
     this.hemi.intensity = THREE.MathUtils.lerp(1.0, 0.55, below) + inside * 0.6
     this.hemi.color.set('#bfe3ff').lerp(new THREE.Color('#9fb1c9'), below)
-    this.hemi.groundColor.set('#ffffff').lerp(new THREE.Color('#5f6f66'), below).lerp(new THREE.Color('#6d8a5c'), nearGround)
+    this.hemi.groundColor.set('#ffffff').lerp(new THREE.Color('#8f9c96'), below).lerp(new THREE.Color('#8fa57f'), nearGround)
     this.sunTarget.position.copy(this.camera.position)
     this.sun.position.copy(this.camera.position).addScaledVector(SUN_DIR, 100)
     if (Math.abs(alt - this.envAlt) > 350 || (alt < CLOUD_Y) !== (this.envAlt < CLOUD_Y)) this.refreshEnv(alt)
 
+    // terrain has its own haze so the ground seen through cloud breaks is always distant and soft
+    const tu = this.terrain.uniforms
+    tu.uFogColor.value.copy(fogColorFor(Math.min(alt, CLOUD_Y - 400)))
+    tu.uFogDensity.value = Math.max(this.fogUniforms.density.value, 0.00036)
+    tu.uSunI.value = THREE.MathUtils.lerp(0.95, 0.5, below)
+    tu.uAmb.value = THREE.MathUtils.lerp(1.0, 0.95, below)
+    tu.uSkyCol.value.copy(this.hemi.color)
+    tu.uGroundCol.value.copy(this.hemi.groundColor)
+
     // systems
     this.sky.update(this.time, this.camera, alt)
     this.clouds.update(sdt, this.camera, fl.pos)
-    this.terrain.update(fl.pos)
+    this.terrain.update(fl.pos, this.camera, this.time)
     this.life.update(sdt, this.time, fl, this.camera, this.audio)
-    this.audio.update(fl.speed, fl.throttle, inside, this.landing ? 1 : 0)
+    this.audio.update(fl.engine ? fl.speed : 0, fl.engine ? fl.throttle : 0, inside, fl.engine ? 0 : 1, fl.speed)
 
     if (this.useBloom) this.composer.render()
     else this.renderer.render(this.scene, this.camera)

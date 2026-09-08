@@ -37,17 +37,17 @@ export class SkyAudio {
     this.master.gain.setTargetAtTime(this.on ? 0.8 : 0, t, 0.4)
   }
 
-  update(speed, throttle, inside, landing) {
+  update(engineSpeed, throttle, inside, engineOff, airSpeed) {
     if (!this.ctx || !this.on) return
     const t = this.ctx.currentTime
-    const f = 52 + throttle * 55 + speed * 0.22
+    const f = 52 + throttle * 55 + engineSpeed * 0.22
     this.osc1.frequency.setTargetAtTime(f, t, 0.15)
     this.osc2.frequency.setTargetAtTime(f * 1.503, t, 0.15)
-    this.engineLP.frequency.setTargetAtTime(240 + throttle * 300 + speed, t, 0.2)
-    this.engineGain.gain.setTargetAtTime(landing ? 0.02 : 0.045 + throttle * 0.03, t, 0.3)
-    const w = Math.pow(Math.min(1, speed / 150), 2) * 0.5 + inside * 0.4
+    this.engineLP.frequency.setTargetAtTime(240 + throttle * 300 + engineSpeed, t, 0.2)
+    this.engineGain.gain.setTargetAtTime(engineOff ? 0.0 : 0.045 + throttle * 0.03, t, 0.5)
+    const w = Math.pow(Math.min(1, airSpeed / 150), 2) * (engineOff ? 0.7 : 0.5) + inside * 0.4
     this.windGain.gain.setTargetAtTime(w, t, 0.25)
-    this.windBP.frequency.setTargetAtTime(380 + speed * 5 - inside * 200, t, 0.3)
+    this.windBP.frequency.setTargetAtTime(380 + airSpeed * 5 - inside * 200, t, 0.3)
   }
 
   pop() {

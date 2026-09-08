@@ -10,6 +10,7 @@ export class Flight {
     this.quat = new THREE.Quaternion()
     this.speed = 60
     this.throttle = 0.55
+    this.engine = true
     this.in = { pitch: 0, roll: 0, yaw: 0 }
     this.turnRate = 0          // world yaw rate (rad/s), for trails / camera
     this.rollRate = 0
@@ -27,6 +28,7 @@ export class Flight {
     this.quat.setFromAxisAngle(UP, SPAWN_HEADING)
     this.speed = 60
     this.throttle = 0.55
+    this.engine = true
     this.in.pitch = this.in.roll = this.in.yaw = 0
     this.barrel = 0
     this.autopilot = null
@@ -122,11 +124,19 @@ export class Flight {
       this.turnRate = turn
 
       // speed: throttle target, gravity along the flight path
-      const target = 38 + 62 * this.throttle
       this.forward(_f)
-      this.speed += (target - this.speed) * (1 - Math.exp(-dt * 0.55))
-      this.speed += -_f.y * 42 * dt
-      this.speed = THREE.MathUtils.clamp(this.speed, 26, 150)
+      if (this.engine) {
+        const target = 38 + 62 * this.throttle
+        this.speed += (target - this.speed) * (1 - Math.exp(-dt * 0.55))
+        this.speed += -_f.y * 42 * dt
+        this.speed = THREE.MathUtils.clamp(this.speed, 26, 150)
+      } else {
+        // engine off: drag bleeds speed, gravity gives it back in a dive, the nose drops when slow
+        this.speed += -this.speed * 0.22 * dt - _f.y * 46 * dt
+        this.speed = THREE.MathUtils.clamp(this.speed, 6, 160)
+        const slow = THREE.MathUtils.clamp(1 - this.speed / 34, 0, 1)
+        this.rotateLocal(RIGHT, -slow * 0.9 * sy * dt)
+      }
     }
     this.pitchRate = pitchRate; this.rollRate = rollRate
     this.gLoad = Math.abs(pitchRate) * this.speed / 60 + Math.abs(this.turnRate) * this.speed / 50

@@ -1,186 +1,279 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { makeNoise } from './noise.js'
-import { GROUND_Y } from './constants.js'
+import { GLSL_NOISE, GLSL_SRGB, GLSL_TERRAIN, terrainH, snoise, fbm3 } from './noise.js'
+import { GROUND_Y, SUN_DIR } from './constants.js'
 
-const TILE = 1500, SEG = 40, RADIUS = 3
-const sm = THREE.MathUtils.smoothstep
+// Terrain is a set of nested clipmap levels: uniform grids of increasing spacing,
+// each with a hole where the finer level sits. Heights come from the vertex
+// shader (noise identical to the JS port) so the world is endless and costs no CPU.
+
+const LEVELS = 7, CELLS = 48, BASE = 14, HOLE0 = 14, HOLE1 = 34 // hole = 20 cells, finer level spans 24
+
+const vert = /* glsl */ `
+precision highp float;
+attribute float aSkirt;
+uniform float uSpacing, uDrop, uGroundY;
+uniform vec2 uLevelOrigin, uWorldOffset;
+varying vec3 vWorld;
+varying float vH, vFogDepth;
+${GLSL_NOISE}
+${GLSL_TERRAIN}
+void main(){
+  vec2 local = position.xz * uSpacing + uLevelOrigin;
+  vec2 w = local + uWorldOffset;
+  float h = terrainH(w);
+  float y = uGroundY + max(h, 0.0) - uDrop - aSkirt * uSpacing * 6.0;
+  vWorld = vec3(w.x, max(h, 0.0), w.y);
+  vH = h;
+  vec4 mv = viewMatrix * vec4(local.x, y, local.y, 1.0);
+  vFogDepth = -mv.z;
+  gl_Position = projectionMatrix * mv;
+}
+`
+const frag = /* glsl */ `
+precision highp float;
+uniform vec3 uSunDir, uFogColor, uSkyCol, uGroundCol;
+uniform float uFogDensity, uSunI, uAmb, uTime;
+varying vec3 vWorld;
+varying float vH, vFogDepth;
+${GLSL_NOISE}
+${GLSL_SRGB}
+void main(){
+  vec3 dx = dFdx(vWorld), dz = dFdy(vWorld);
+  vec3 n = normalize(cross(dz, dx));
+  n *= sign(n.y + 1e-6);
+  float slope = length(n.xz) / max(n.y, 1e-3);
+  vec2 p = vWorld.xz;
+  float var1 = snoise(p / 300.0) * 0.5 + 0.5;
+  float h = vH;
+  vec3 c;
+  float water = 0.0;
+  if (h < 0.5) {
+    float d = smoothstep(0.0, 40.0, -h);
+    c = S(0.22 - d * 0.1, 0.55 - d * 0.15, 0.85 - d * 0.1);
+    n = vec3(0.0, 1.0, 0.0);
+    water = 1.0;
+  } else if (h < 8.0) {
+    c = S(0.85, 0.8, 0.62);
+  } else {
+    float forest = smoothstep(0.05, 0.3, fbm3(p / 1400.0 + 20.0) + var1 * 0.25) * (1.0 - smoothstep(700.0, 950.0, h));
+    vec3 grass = S(0.5 + var1 * 0.12, 0.72 - var1 * 0.08, 0.32);
+    c = mix(grass, S(0.2, 0.45, 0.24), forest);
+    float rock = min(1.0, smoothstep(0.5, 0.9, slope) + smoothstep(800.0, 1300.0, h) * 0.6);
+    c = mix(c, S(0.48, 0.46, 0.46), rock);
+    float snow = smoothstep(1150.0 + var1 * 200.0, 1400.0 + var1 * 200.0, h) * (1.0 - smoothstep(0.9, 1.6, slope));
+    c = mix(c, S(0.96, 0.97, 1.0), snow);
+  }
+  float diff = max(dot(n, uSunDir), 0.0);
+  vec3 amb = mix(uGroundCol, uSkyCol, n.y * 0.5 + 0.5) * uAmb * 0.9;
+  vec3 col = c * (amb + uSunI * diff * S(1.0, 0.96, 0.9));
+  if (water > 0.5) {
+    vec3 v = normalize(cameraPosition - vec3(vWorld.x, vWorld.y, vWorld.z));
+    float sp = pow(max(dot(reflect(-v, n), uSunDir), 0.0), 80.0);
+    float glint = snoise(p * 0.08 + uTime * 0.3) * snoise(p * 0.05 - uTime * 0.2);
+    col += vec3(1.0) * (sp * 0.6 + max(glint, 0.0) * 0.12) * uSunI;
+  }
+  float fogF = 1.0 - exp(-uFogDensity * uFogDensity * vFogDepth * vFogDepth);
+  col = mix(col, uFogColor, fogF);
+  gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`
+
+function levelGeometry(withHole) {
+  const n = CELLS + 1
+  const pos = [], skirt = [], idx = []
+  const vid = (i, j) => j * n + i
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { pos.push(i, 0, j); skirt.push(0) }
+  const inHole = (i, j) => withHole && i >= HOLE0 && i < HOLE1 && j >= HOLE0 && j < HOLE1
+  for (let j = 0; j < CELLS; j++) {
+    for (let i = 0; i < CELLS; i++) {
+      if (inHole(i, j)) continue
+      const a = vid(i, j), b = vid(i + 1, j), c = vid(i, j + 1), d = vid(i + 1, j + 1)
+      if ((i + j) % 2 === 0) idx.push(a, c, b, b, c, d)
+      else idx.push(a, c, d, a, d, b)
+    }
+  }
+  // outer skirt: duplicate the boundary ring, dropped down, and stitch
+  const ring = []
+  for (let i = 0; i < CELLS; i++) ring.push(vid(i, 0))
+  for (let j = 0; j < CELLS; j++) ring.push(vid(CELLS, j))
+  for (let i = CELLS; i > 0; i--) ring.push(vid(i, CELLS))
+  for (let j = CELLS; j > 0; j--) ring.push(vid(0, j))
+  const base = pos.length / 3
+  for (const v of ring) { pos.push(pos[v * 3], 0, pos[v * 3 + 2]); skirt.push(1) }
+  for (let k = 0; k < ring.length; k++) {
+    const a = ring[k], b = ring[(k + 1) % ring.length]
+    const a2 = base + k, b2 = base + ((k + 1) % ring.length)
+    idx.push(a, a2, b, b, a2, b2)
+    idx.push(a, b, a2, b, b2, a2)
+  }
+  if (withHole) {
+    // inner skirt around the hole
+    const inner = []
+    for (let i = HOLE0; i < HOLE1; i++) inner.push(vid(i, HOLE0))
+    for (let j = HOLE0; j < HOLE1; j++) inner.push(vid(HOLE1, j))
+    for (let i = HOLE1; i > HOLE0; i--) inner.push(vid(i, HOLE1))
+    for (let j = HOLE1; j > HOLE0; j--) inner.push(vid(HOLE0, j))
+    const b0 = pos.length / 3
+    for (const v of inner) { pos.push(pos[v * 3], 0, pos[v * 3 + 2]); skirt.push(1) }
+    for (let k = 0; k < inner.length; k++) {
+      const a = inner[k], b = inner[(k + 1) % inner.length]
+      const a2 = b0 + k, b2 = b0 + ((k + 1) % inner.length)
+      idx.push(a, a2, b, b, a2, b2)
+      idx.push(a, b, a2, b, b2, a2)
+    }
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setAttribute('aSkirt', new THREE.Float32BufferAttribute(skirt, 1))
+  g.setIndex(idx)
+  return g
+}
+
+export { GLSL_NOISE, GLSL_TERRAIN, terrainH }
 
 export class Terrain {
-  constructor(scene) {
+  constructor(scene, fogUniforms) {
     this.scene = scene
-    this.noise = makeNoise(4242)
     this.origin = { x: 0, z: 0 }
-    this.tiles = new Map()
     this.group = new THREE.Group()
-    this.group.visible = false
-    this.active = false
     scene.add(this.group)
-    this.mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95, metalness: 0 })
-    this.treeMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 })
-    const cone = new THREE.ConeGeometry(7, 26, 6)
-    cone.translate(0, 18, 0)
-    const cone2 = new THREE.ConeGeometry(5, 18, 6)
-    cone2.translate(0, 28, 0)
-    const trunk = new THREE.CylinderGeometry(1.4, 1.8, 8, 5)
-    trunk.translate(0, 4, 0)
-    const cols = []
-    for (const [g, c] of [[cone, [0.18, 0.42, 0.22]], [cone2, [0.22, 0.5, 0.26]], [trunk, [0.35, 0.24, 0.15]]]) {
-      const n = g.attributes.position.count
-      const arr = new Float32Array(n * 3)
-      for (let i = 0; i < n; i++) { arr[i * 3] = c[0]; arr[i * 3 + 1] = c[1]; arr[i * 3 + 2] = c[2] }
-      g.setAttribute('color', new THREE.BufferAttribute(arr, 3))
-      cols.push(g)
+    this.active = true
+    this.uniforms = {
+      uWorldOffset: { value: new THREE.Vector2(0, 0) },
+      uGroundY: { value: GROUND_Y },
+      uSunDir: { value: SUN_DIR.clone() },
+      uFogColor: { value: new THREE.Color('#8fa3bf') },
+      uFogDensity: { value: 0.0003 },
+      uSkyCol: { value: new THREE.Color('#bfd5ea') },
+      uGroundCol: { value: new THREE.Color('#8a9a8a') },
+      uSunI: { value: 1.0 },
+      uAmb: { value: 0.55 },
+      uTime: { value: 0 },
     }
-    this.treeGeo = mergeGeometries(cols.map(g => g.toNonIndexed()), false)
-    this.pending = []
-    this.c = new THREE.Color()
-  }
+    this.fog = fogUniforms
+    const full = levelGeometry(false), ring = levelGeometry(true)
+    this.levels = []
+    for (let k = 0; k < LEVELS; k++) {
+      const spacing = BASE * Math.pow(2, k)
+      const mat = new THREE.ShaderMaterial({
+        uniforms: {
+          ...this.uniforms,
+          uSpacing: { value: spacing },
+          uDrop: { value: k === 0 ? 0 : spacing * 0.35 },
+          uLevelOrigin: { value: new THREE.Vector2(0, 0) },
+        },
+        vertexShader: vert,
+        fragmentShader: frag,
+      })
+      const mesh = new THREE.Mesh(k === 0 ? full : ring, mat)
+      mesh.frustumCulled = false
+      this.group.add(mesh)
+      this.levels.push({ mesh, spacing, origin: mat.uniforms.uLevelOrigin.value })
+    }
 
-  // height above GROUND_Y at world coords
-  h(x, z) {
-    const N = this.noise
-    const cont = N.fbm(x / 9000, z / 9000, 3)
-    const mm = sm(N.fbm(x / 15000 + 100, z / 15000 + 100, 2), 0.0, 0.5)
-    const hills = N.fbm(x / 1100 + 5, z / 1100 + 5, 4) * 95 + 55
-    const mts = N.ridged(x / 2800, z / 2800, 4) * 1900 * mm
-    let h = cont * 160 + hills + mts
-    const rv = Math.abs(N.n(x / 4200 + 7, z / 4200 + 7) + N.fbm(x / 800 + 3, z / 800 + 3, 2) * 0.18)
-    const river = 1 - sm(rv, 0.015, 0.06)
-    const lowland = 1 - sm(h, 160, 420)
-    h -= river * lowland * 70
-    return h
+    // trees
+    this.treeMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 })
+    const cone = new THREE.ConeGeometry(7, 26, 6); cone.translate(0, 18, 0)
+    const cone2 = new THREE.ConeGeometry(5, 18, 6); cone2.translate(0, 28, 0)
+    const trunk = new THREE.CylinderGeometry(1.4, 1.8, 8, 5); trunk.translate(0, 4, 0)
+    const parts = []
+    for (const [g, c] of [[cone, [0.18, 0.42, 0.22]], [cone2, [0.22, 0.5, 0.26]], [trunk, [0.35, 0.24, 0.15]]]) {
+      const cnt = g.attributes.position.count, arr = new Float32Array(cnt * 3)
+      for (let i = 0; i < cnt; i++) { arr[i * 3] = c[0]; arr[i * 3 + 1] = c[1]; arr[i * 3 + 2] = c[2] }
+      g.setAttribute('color', new THREE.BufferAttribute(arr, 3))
+      parts.push(g.toNonIndexed())
+    }
+    this.treeGeo = mergeGeometries(parts, false)
+    this.chunks = new Map()
+    this.CHUNK = 600
+    this.TREE_R = 3
   }
 
   heightAt(lx, lz) {
-    if (!this.active) return GROUND_Y - 1e6
-    const h = this.h(lx + this.origin.x, lz + this.origin.z)
-    return GROUND_Y + Math.max(h, 0)
+    return GROUND_Y + Math.max(terrainH(lx + this.origin.x, lz + this.origin.z), 0)
   }
 
   shift(dx, dz) {
     this.origin.x += dx; this.origin.z += dz
-    for (const t of this.tiles.values()) { t.mesh.position.x -= dx; t.mesh.position.z -= dz; if (t.trees) { t.trees.position.x -= dx; t.trees.position.z -= dz } }
+    this.uniforms.uWorldOffset.value.set(this.origin.x, this.origin.z)
+    for (const c of this.chunks.values()) { c.position.x -= dx; c.position.z -= dz }
   }
 
-  color(h, slope, x, z, out) {
-    const N = this.noise
-    const var1 = N.n(x / 300, z / 300) * 0.5 + 0.5
-    if (h < 0.5) {
-      const d = sm(-h, 0, 40)
-      out.setRGB(0.22 - d * 0.1, 0.55 - d * 0.15, 0.85 - d * 0.1)
-      return
-    }
-    if (h < 8) { out.setRGB(0.85, 0.8, 0.62); return }
-    const forest = sm(N.fbm(x / 1400 + 20, z / 1400 + 20, 3) + var1 * 0.25, 0.05, 0.3) * (1 - sm(h, 700, 950))
-    const grass = this.c.setRGB(0.5 + var1 * 0.12, 0.72 - var1 * 0.08, 0.32)
-    const dark = new THREE.Color(0.2, 0.45, 0.24)
-    out.copy(grass).lerp(dark, forest)
-    const rock = sm(slope, 0.5, 0.9) + sm(h, 800, 1300) * 0.6
-    out.lerp(new THREE.Color(0.48, 0.46, 0.46), Math.min(1, rock))
-    const snow = sm(h, 1150 + var1 * 200, 1400 + var1 * 200) * (1 - sm(slope, 0.9, 1.6))
-    out.lerp(new THREE.Color(0.96, 0.97, 1.0), snow)
-  }
-
-  buildTile(tx, tz) {
-    const geo = new THREE.PlaneGeometry(TILE, TILE, SEG, SEG)
-    geo.rotateX(-Math.PI / 2)
-    const pos = geo.attributes.position
-    const n = SEG + 1
-    const hs = new Float32Array((n + 2) * (n + 2))
-    const wx0 = tx * TILE - TILE / 2, wz0 = tz * TILE - TILE / 2
-    const step = TILE / SEG
-    for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) hs[(j + 1) * (n + 2) + (i + 1)] = this.h(wx0 + i * step, wz0 + j * step)
-    const colors = new Float32Array(pos.count * 3)
-    const col = new THREE.Color()
-    for (let j = 0; j < n; j++) {
-      for (let i = 0; i < n; i++) {
-        const k = j * n + i
-        const h = hs[(j + 1) * (n + 2) + (i + 1)]
-        const hx = hs[(j + 1) * (n + 2) + (i + 2)] - hs[(j + 1) * (n + 2) + i]
-        const hz = hs[(j + 2) * (n + 2) + (i + 1)] - hs[j * (n + 2) + (i + 1)]
-        const slope = Math.sqrt(hx * hx + hz * hz) / (2 * step)
-        pos.setY(k, Math.max(h, 0))
-        this.color(h, slope, wx0 + i * step, wz0 + j * step, col)
-        colors[k * 3] = col.r; colors[k * 3 + 1] = col.g; colors[k * 3 + 2] = col.b
-      }
-    }
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-    geo.computeVertexNormals()
-    const mesh = new THREE.Mesh(geo, this.mat)
-    mesh.position.set(tx * TILE - this.origin.x, GROUND_Y, tz * TILE - this.origin.z)
-    this.group.add(mesh)
-
-    // trees on forested, gentle land
-    const N = this.noise
+  buildChunk(cx, cz) {
+    const S = this.CHUNK, wx0 = cx * S, wz0 = cz * S
     const cand = []
-    const m = new THREE.Matrix4()
-    const tcol = new THREE.Color()
     const sp = 42
-    for (let j = 0; j < TILE / sp; j++) {
-      for (let i = 0; i < TILE / sp; i++) {
-        const jx = N.n(i * 3.1 + tx * 77, j * 2.7 + tz * 91) * sp * 0.45
-        const jz = N.n(i * 1.9 + tx * 13, j * 3.3 + tz * 37) * sp * 0.45
+    for (let j = 0; j < S / sp; j++) {
+      for (let i = 0; i < S / sp; i++) {
+        const jx = snoise(i * 3.1 + cx * 77, j * 2.7 + cz * 91) * sp * 0.45
+        const jz = snoise(i * 1.9 + cx * 13, j * 3.3 + cz * 37) * sp * 0.45
         const x = wx0 + i * sp + sp / 2 + jx, z = wz0 + j * sp + sp / 2 + jz
-        const h = this.h(x, z)
+        const h = terrainH(x, z)
         if (h < 12 || h > 900) continue
-        const forest = N.fbm(x / 1400 + 20, z / 1400 + 20, 3) + (N.n(x / 300, z / 300) * 0.5 + 0.5) * 0.25
-        if (forest < 0.15) continue
-        if (N.n(x / 40, z / 40) < -0.2) continue
-        const hx = this.h(x + 20, z) - this.h(x - 20, z), hz = this.h(x, z + 20) - this.h(x, z - 20)
+        const forest = fbm3(x / 1400 + 20, z / 1400 + 20) + (snoise(x / 300, z / 300) * 0.5 + 0.5) * 0.25
+        if (forest < 0.18) continue
+        if (snoise(x / 40, z / 40) < -0.2) continue
+        const hx = terrainH(x + 20, z) - terrainH(x - 20, z), hz = terrainH(x, z + 20) - terrainH(x, z - 20)
         if (Math.sqrt(hx * hx + hz * hz) / 40 > 0.7) continue
-        cand.push([x - wx0 - TILE / 2, h, z - wz0 - TILE / 2, 0.7 + (N.n(x / 7, z / 7) * 0.5 + 0.5) * 0.7])
-        if (cand.length >= 900) break
+        cand.push([x - wx0, h, z - wz0, 0.7 + (snoise(x / 7, z / 7) * 0.5 + 0.5) * 0.7])
       }
     }
-    let trees = null
+    const g = new THREE.Group()
     if (cand.length) {
-      trees = new THREE.InstancedMesh(this.treeGeo, this.treeMat, cand.length)
+      const trees = new THREE.InstancedMesh(this.treeGeo, this.treeMat, cand.length)
+      const m = new THREE.Matrix4(), col = new THREE.Color(), sv = new THREE.Vector3()
       for (let i = 0; i < cand.length; i++) {
         const [x, y, z, s] = cand[i]
         m.makeRotationY(i * 1.7).setPosition(x, y - 1, z)
-        m.scale(new THREE.Vector3(s, s, s))
+        m.scale(sv.set(s, s, s))
         trees.setMatrixAt(i, m)
-        tcol.setRGB(0.9 + Math.sin(i) * 0.1, 1.0, 0.9 + Math.cos(i * 1.3) * 0.1)
-        trees.setColorAt(i, tcol)
+        col.setRGB(0.9 + Math.sin(i) * 0.1, 1.0, 0.9 + Math.cos(i * 1.3) * 0.1)
+        trees.setColorAt(i, col)
       }
-      trees.position.copy(mesh.position)
-      this.group.add(trees)
+      g.add(trees)
     }
-    return { mesh, trees, tx, tz }
+    g.position.set(wx0 - this.origin.x, GROUND_Y, wz0 - this.origin.z)
+    this.group.add(g)
+    return g
   }
 
-  disposeTile(t) {
-    this.group.remove(t.mesh)
-    t.mesh.geometry.dispose()
-    if (t.trees) { this.group.remove(t.trees); t.trees.dispose() }
-  }
-
-  update(planePos) {
-    const want = planePos.y < GROUND_Y + 7500
-    if (!want) {
-      if (this.active) { for (const t of this.tiles.values()) this.disposeTile(t); this.tiles.clear(); this.group.visible = false; this.active = false }
+  update(planePos, camera, t) {
+    this.uniforms.uTime.value = t
+    // clipmap levels follow the camera, snapped to twice their spacing so vertices never swim
+    const cx = camera.position.x, cz = camera.position.z
+    for (const L of this.levels) {
+      const snap = L.spacing * 2
+      const half = CELLS * L.spacing / 2
+      L.origin.set(Math.round((cx - half) / snap) * snap, Math.round((cz - half) / snap) * snap)
+    }
+    // trees near the ground only
+    const near = planePos.y < GROUND_Y + 2600
+    if (!near) {
+      if (this.chunks.size) { for (const c of this.chunks.values()) this.disposeChunk(c); this.chunks.clear() }
       return
     }
-    this.active = true
-    this.group.visible = true
+    const S = this.CHUNK
     const wx = planePos.x + this.origin.x, wz = planePos.z + this.origin.z
-    const cx = Math.round(wx / TILE), cz = Math.round(wz / TILE)
+    const ccx = Math.round(wx / S), ccz = Math.round(wz / S)
     const keep = new Set()
     let built = 0
-    // nearest first
+    const R = this.TREE_R
     const order = []
-    for (let dz = -RADIUS; dz <= RADIUS; dz++) for (let dx = -RADIUS; dx <= RADIUS; dx++) order.push([dx, dz])
+    for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) order.push([dx, dz])
     order.sort((a, b) => (a[0] * a[0] + a[1] * a[1]) - (b[0] * b[0] + b[1] * b[1]))
     for (const [dx, dz] of order) {
-      const tx = cx + dx, tz = cz + dz
-      const key = tx + ',' + tz
+      const key = (ccx + dx) + ',' + (ccz + dz)
       keep.add(key)
-      if (!this.tiles.has(key) && built < 1) {
-        this.tiles.set(key, this.buildTile(tx, tz))
-        built++
-      }
+      if (!this.chunks.has(key) && built < 1) { this.chunks.set(key, this.buildChunk(ccx + dx, ccz + dz)); built++ }
     }
-    for (const [key, t] of this.tiles) if (!keep.has(key)) { this.disposeTile(t); this.tiles.delete(key) }
+    for (const [key, c] of this.chunks) if (!keep.has(key)) { this.disposeChunk(c); this.chunks.delete(key) }
+  }
+
+  disposeChunk(g) {
+    this.group.remove(g)
+    g.traverse(o => { if (o.isInstancedMesh) o.dispose() })
   }
 }

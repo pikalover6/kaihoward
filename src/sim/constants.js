@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 
 export const CLOUD_Y = 0            // altitude of the cloud sea
-export const GROUND_Y = -14000      // base altitude of the land far below
+export const GROUND_Y = -3600       // base altitude of the land below (about a 30 s dive)
 export const CEILING_Y = 4800       // soft ceiling
 export const SPAWN_POS = new THREE.Vector3(0, 170, 0)
 export const SPAWN_HEADING = 0.35   // radians, yaw

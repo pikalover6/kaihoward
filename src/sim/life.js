@@ -129,25 +129,33 @@ void main(){
 }
 `
 
-function balloonEnvelope(colA, colB, colC) {
+function balloonEnvelope() {
   const prof = []
   const shape = [[0.16, 0], [0.34, 0.12], [0.62, 0.42], [0.86, 0.85], [1.0, 1.35], [0.98, 1.85], [0.8, 2.3], [0.5, 2.62], [0.0, 2.75]]
   for (const [r, y] of shape) prof.push(new THREE.Vector3(r, y, 0))
   const curve = new THREE.CatmullRomCurve3(prof, false, 'catmullrom', 0.5)
   const pts = curve.getPoints(30).map(p => new THREE.Vector2(Math.max(0, p.x), p.y))
-  const g = new THREE.LatheGeometry(pts, 24)
-  const pos = g.attributes.position
-  const cols = new Float32Array(pos.count * 3)
-  const a = new THREE.Color(colA), b = new THREE.Color(colB), c = new THREE.Color(colC)
-  for (let i = 0; i < pos.count; i++) {
-    const ang = Math.atan2(pos.getZ(i), pos.getX(i))
-    const gore = Math.floor(((ang / (Math.PI * 2)) + 1) * 12 + 0.02) % 2
-    const y = pos.getY(i)
-    const col = (y > 0.5 && y < 0.75) ? c : (gore ? a : b)
-    cols[i * 3] = col.r; cols[i * 3 + 1] = col.g; cols[i * 3 + 2] = col.b
+  return new THREE.LatheGeometry(pts, 32)
+}
+
+function balloonTexture(colA, colB, colC) {
+  const w = 512, h = 256
+  const cv = document.createElement('canvas')
+  cv.width = w; cv.height = h
+  const ctx = cv.getContext('2d')
+  const gores = 12
+  for (let i = 0; i < gores; i++) {
+    ctx.fillStyle = i % 2 ? colA : colB
+    ctx.fillRect(Math.floor(i * w / gores), 0, Math.ceil(w / gores), h)
   }
-  g.setAttribute('color', new THREE.BufferAttribute(cols, 3))
-  return g
+  // band near the bottom (v is measured from the bottom of the profile)
+  ctx.fillStyle = colC
+  ctx.fillRect(0, Math.floor(h * (1 - 0.27)), w, Math.floor(h * 0.07))
+  const tex = new THREE.CanvasTexture(cv)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.wrapS = THREE.RepeatWrapping
+  tex.anisotropy = 4
+  return tex
 }
 
 const PALETTES = [
@@ -193,8 +201,8 @@ export class Life {
     for (let i = 0; i < 9; i++) {
       const pal = PALETTES[i % PALETTES.length]
       const g = new THREE.Group()
-      const env = new THREE.Mesh(balloonEnvelope(...pal), new THREE.MeshPhysicalMaterial({
-        vertexColors: true, roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.2,
+      const env = new THREE.Mesh(balloonEnvelope(), new THREE.MeshPhysicalMaterial({
+        map: balloonTexture(...pal), roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.2,
       }))
       env.position.y = 1.1
       const basket = new THREE.Mesh(basketGeo, basketMat)

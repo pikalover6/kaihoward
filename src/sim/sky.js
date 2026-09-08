@@ -122,24 +122,24 @@ export function fogColorFor(alt) {
   const c = new THREE.Color()
   const above = new THREE.Color('#cfe6ff')
   const inCloud = new THREE.Color('#f4f8ff')
-  const below = new THREE.Color('#8fa3bf')
-  const ground = new THREE.Color('#b9c9dc')
+  const below = new THREE.Color('#93a7c2')
+  const ground = new THREE.Color('#b3c4d8')
   const r = alt - CLOUD_Y
-  if (r > 40) c.copy(above)
-  else if (r > -160) c.copy(inCloud).lerp(above, THREE.MathUtils.smoothstep(r, -40, 40))
-  else c.copy(below).lerp(inCloud, THREE.MathUtils.smoothstep(r, -420, -160))
-  if (r < -9000) c.lerp(ground, THREE.MathUtils.smoothstep(-r, 9000, 13000))
+  if (r > 30) c.copy(above)
+  else if (r > -110) c.copy(inCloud).lerp(above, THREE.MathUtils.smoothstep(r, -30, 30))
+  else c.copy(below).lerp(inCloud, THREE.MathUtils.smoothstep(r, -300, -110))
+  c.lerp(ground, THREE.MathUtils.smoothstep(-r, 1800, 3200))
   return c
 }
 
 export function fogDensityFor(alt) {
   const r = alt - CLOUD_Y
-  const inside = Math.exp(-Math.pow((r + 50) / 95, 2))
+  const inside = Math.exp(-Math.pow((r + 35) / 55, 2))
   let base
   if (r > 0) base = 0.000075
-  else base = THREE.MathUtils.lerp(0.00035, 0.00012, THREE.MathUtils.smoothstep(-r, 200, 5000))
-  if (r < -9000) base = THREE.MathUtils.lerp(base, 0.00021, THREE.MathUtils.smoothstep(-r, 9000, 13500))
-  return base + inside * 0.0055
+  else base = THREE.MathUtils.lerp(0.00032, 0.00022, THREE.MathUtils.smoothstep(-r, 150, 1500))
+  base = THREE.MathUtils.lerp(base, 0.00019, THREE.MathUtils.smoothstep(-r, 1800, 3200))
+  return base + inside * 0.006
 }
 
 export class Sky {
