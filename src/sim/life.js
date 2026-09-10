@@ -211,7 +211,7 @@ export class Life {
       basket.position.y = 0.0
       g.add(env, basket)
       for (let k = 0; k < 4; k++) {
-        const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.1, 4), ropeMat)
+        const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 5), ropeMat)
         const a = (k / 4) * Math.PI * 2 + Math.PI / 4
         rope.position.set(Math.cos(a) * 0.22, 0.65, Math.sin(a) * 0.22)
         rope.rotation.z = Math.cos(a) * -0.12

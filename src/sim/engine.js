@@ -71,7 +71,10 @@ export class Engine {
     this.refreshEnv(200)
 
     // post
-    this.composer = new EffectComposer(renderer)
+    // the composer draws to its own target, so the canvas's antialias flag does nothing for the scene;
+    // a multisampled target keeps thin things (balloon ropes, wingtip trails) from breaking into dashes
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2())
+    this.composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 }))
     this.composer.addPass(new RenderPass(this.scene, this.camera))
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.22, 0.5, 0.96)
     this.composer.addPass(this.bloom)
