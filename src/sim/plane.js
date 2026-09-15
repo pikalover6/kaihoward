@@ -30,6 +30,68 @@ function extrudeFlat(shape, thick, bevel) {
   return g
 }
 
+
+// One-piece wing: a lofted tube of rounded cross-sections along the span. The
+// tip bends upward and is painted via vertex colours, so the
+// wingtip is part of the wing rather than a separate object stuck on the end.
+function wingGeometry(sign, {
+  span, rootChord, tipChord, sweep, rootThick, tipThick, curl, bendFrom, paintFrom, baseColor, tipColor,
+}) {
+  const M = 40, N = 24 // spanwise stations, points around each section
+  const pos = [], col = [], idx = []
+  const base = new THREE.Color(baseColor), tip = new THREE.Color(tipColor)
+  const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
+  // stations along the span; the paint line is a doubled station (cream then coral) so the cutoff is crisp
+  const stations = []
+  for (let i = 0; i <= M; i++) {
+    const t = i / M
+    if (t < paintFrom) stations.push({ t, painted: false })
+    else if (stations[stations.length - 1].t < paintFrom) stations.push({ t: paintFrom, painted: false }, { t: paintFrom, painted: true }, ...(t > paintFrom ? [{ t, painted: true }] : []))
+    else stations.push({ t, painted: true })
+  }
+  for (const { t, painted } of stations) {
+    // planform: linear taper, rounded off to a point over the last stretch of span
+    const round = t < 0.82 ? 1 : Math.sqrt(Math.max(0, 1 - ((t - 0.82) / 0.18) ** 2))
+    const chord = THREE.MathUtils.lerp(rootChord, tipChord, t) * round
+    const thick = THREE.MathUtils.lerp(rootThick, tipThick, t) * (0.35 + 0.65 * round)
+    const leading = rootChord / 2 - sweep * t
+    const zc = -(leading - THREE.MathUtils.lerp(rootChord, tipChord, t) / 2) // shape +y (forward) -> -z
+    // the wing stays flat; only the tip bends up like a small winglet
+    const k = smooth(bendFrom, 1, t)
+    const y = curl * k * k
+    const x = sign * span * (t - 0.03 * k * k) // the bend shortens the projected span a touch
+    const c = painted ? tip : base
+    for (let j = 0; j < N; j++) {
+      const a = (j / N) * Math.PI * 2
+      // superellipse section: flatter top/bottom than an ellipse, rounded edges
+      const cs = Math.cos(a), sn = Math.sin(a)
+      const ez = Math.sign(cs) * Math.pow(Math.abs(cs), 0.7), ey = Math.sign(sn) * Math.pow(Math.abs(sn), 1.3)
+      pos.push(x, y + ey * thick / 2, zc + ez * chord / 2)
+      col.push(c.r, c.g, c.b)
+    }
+  }
+  for (let i = 0; i < stations.length - 1; i++) {
+    for (let j = 0; j < N; j++) {
+      const a = i * N + j, b = i * N + (j + 1) % N, cc = (i + 1) * N + j, d = (i + 1) * N + (j + 1) % N
+      if (sign > 0) idx.push(a, cc, b, b, cc, d)
+      else idx.push(a, b, cc, b, d, cc)
+    }
+  }
+  // root cap so the open end never shows inside the fuselage
+  const rootCenter = pos.length / 3
+  pos.push(0, 0, -(rootChord / 2 - rootChord / 2)); col.push(base.r, base.g, base.b)
+  for (let j = 0; j < N; j++) {
+    const a = j, b = (j + 1) % N
+    if (sign > 0) idx.push(rootCenter, b, a); else idx.push(rootCenter, a, b)
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+  g.setIndex(idx)
+  g.computeVertexNormals()
+  return g
+}
+
 export function buildPlane(fogUniforms) {
   const root = new THREE.Group()
   const body = new THREE.Group()
@@ -93,19 +155,18 @@ export function buildPlane(fogUniforms) {
   blur.position.z = -2.5
   body.add(prop, blur)
 
-  // wings (low, slight dihedral)
+  // wings: one bent, painted piece each, with a real dihedral tilt
   const dihedral = 0.1
+  const wingMat = gloss('#ffffff', { vertexColors: true })
   for (const sign of [1, -1]) {
-    const w = new THREE.Mesh(extrudeFlat(wingShape(sign, 3.2, 1.55, 1.0, 0.3), 0.16, 0.07), M.cream)
-    w.rotation.x = -Math.PI / 2 // shape XY -> XZ; shape +y -> -z (forward)
+    const w = new THREE.Mesh(wingGeometry(sign, {
+      span: 3.3, rootChord: 1.55, tipChord: 1.05, sweep: 0.3,
+      rootThick: 0.3, tipThick: 0.2, curl: 0.24, bendFrom: 0.8, paintFrom: 0.8,
+      baseColor: '#fff6e6', tipColor: '#ff6b6b',
+    }), wingMat)
+    w.position.set(sign * 0.2, -0.18, -0.6)
     w.rotation.z = sign * dihedral
-    w.position.set(sign * 0.25, -0.18, -0.6)
     body.add(w)
-    // wingtip in coral
-    const tip = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.55, 4, 10), M.coral)
-    tip.rotation.x = Math.PI / 2
-    tip.position.set(sign * 3.45 * Math.cos(dihedral), -0.18 + 3.45 * Math.sin(dihedral), -0.8)
-    body.add(tip)
   }
 
   // tail: horizontal stabilisers + rounded fin

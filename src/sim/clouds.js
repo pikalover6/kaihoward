@@ -100,21 +100,36 @@ attribute float iRot;
 attribute float iVar;
 attribute float iDark;
 attribute float iAspect;
-uniform vec3 uCamRight, uCamUp;
+uniform vec3 uCamRight, uCamUp, uSunDir;
 varying vec2 vUv;
 varying vec2 vLocal;
+varying vec2 vSunLocal;
+varying float vUpY;
 varying float vVar;
 varying float vFogDepth;
 varying float vDist;
 varying float vDark;
 void main(){
   vDark = iDark;
+  // billboard that faces the camera but stays upright in the world, so puffs
+  // don't roll along with the plane / chase camera
+  vec3 fwd = normalize(iPos - cameraPosition);
+  vec3 right = cross(fwd, vec3(0.0, 1.0, 0.0));
+  float rl = length(right);
+  right = rl > 1e-4 ? right / rl : uCamRight;
+  vec3 up = normalize(cross(right, fwd));
+  // straight above / below the camera the world-up basis degenerates: ease into the camera basis there
+  float pole = smoothstep(0.92, 0.995, abs(fwd.y));
+  right = normalize(mix(right, uCamRight, pole));
+  up = normalize(mix(up, uCamUp, pole));
   float c = cos(iRot), s = sin(iRot);
   vec2 q = vec2(position.x * iAspect, position.y);
   vec2 p = vec2(q.x * c - q.y * s, q.x * s + q.y * c);
-  vec3 wp = iPos + (uCamRight * p.x + uCamUp * p.y) * iScale;
+  vec3 wp = iPos + (right * p.x + up * p.y) * iScale;
   vUv = uv;
   vLocal = position.xy;
+  vSunLocal = vec2(dot(uSunDir, right), dot(uSunDir, up));
+  vUpY = up.y;
   vVar = iVar;
   vDist = distance(iPos, cameraPosition) / iScale;
   vec4 mv = viewMatrix * vec4(wp, 1.0);
@@ -125,12 +140,12 @@ void main(){
 const puffFrag = /* glsl */ `
 precision highp float;
 uniform sampler2D uMap;
-uniform vec2 uSunLocal;
-uniform vec3 uCamUp;
 uniform vec3 uFogColor;
 uniform float uFogDensity, uOpacity;
 varying vec2 vUv;
 varying vec2 vLocal;
+varying vec2 vSunLocal;
+varying float vUpY;
 varying float vVar;
 varying float vFogDepth;
 varying float vDist;
@@ -140,10 +155,10 @@ void main(){
   vec2 cell = vec2(mod(vVar, 2.0), floor(vVar / 2.0));
   vec2 uv = (vUv + cell) * 0.5;
   float a = texture2D(uMap, uv).a;
-  vec2 sl = uSunLocal / max(length(uSunLocal), 0.2);
+  vec2 sl = vSunLocal / max(length(vSunLocal), 0.2);
   float lit = clamp(0.5 + 0.9 * dot(vLocal, sl), 0.0, 1.0);
   // vertical shade gradient fades out when looking down on the puffs from above
-  float t = mix(0.85, clamp(vLocal.y + 0.5, 0.0, 1.0), clamp(uCamUp.y, 0.0, 1.0));
+  float t = mix(0.85, clamp(vLocal.y + 0.5, 0.0, 1.0), clamp(vUpY, 0.0, 1.0));
   vec3 shadow = S(0.50, 0.64, 0.92);
   vec3 litC = S(0.99, 0.99, 1.0);
   // thick interior is bluer, especially toward the bottom
@@ -364,7 +379,7 @@ export class Clouds {
       uMap: { value: makePuffAtlas() },
       uCamRight: { value: new THREE.Vector3(1, 0, 0) },
       uCamUp: { value: new THREE.Vector3(0, 1, 0) },
-      uSunLocal: { value: new THREE.Vector2(0.5, 0.8) },
+      uSunDir: { value: SUN_DIR.clone() },
       uFogColor: this.fog.color,
       uFogDensity: this.fog.density,
       uOpacity: { value: 1 },
@@ -438,10 +453,9 @@ export class Clouds {
       }
     }
 
-    // billboard basis
-    const cr = this.puffUniforms.uCamRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize()
-    const cu = this.puffUniforms.uCamUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize()
-    this.puffUniforms.uSunLocal.value.set(SUN_DIR.dot(cr), SUN_DIR.dot(cu))
+    // camera basis: only used as a fallback when a puff sits straight above / below the camera
+    this.puffUniforms.uCamRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize()
+    this.puffUniforms.uCamUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize()
 
     // sort back to front every few frames and repack attributes
     if (this.sortCounter++ % 6 === 0) {

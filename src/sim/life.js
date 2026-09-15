@@ -140,7 +140,7 @@ function balloonEnvelope() {
   return new THREE.LatheGeometry(pts, 32)
 }
 
-function balloonTexture(colA, colB, colC) {
+function balloonTexture(colA, colB) {
   const w = 512, h = 256
   const cv = document.createElement('canvas')
   cv.width = w; cv.height = h
@@ -150,9 +150,6 @@ function balloonTexture(colA, colB, colC) {
     ctx.fillStyle = i % 2 ? colA : colB
     ctx.fillRect(Math.floor(i * w / gores), 0, Math.ceil(w / gores), h)
   }
-  // band near the bottom (v is measured from the bottom of the profile)
-  ctx.fillStyle = colC
-  ctx.fillRect(0, Math.floor(h * (1 - 0.27)), w, Math.floor(h * 0.07))
   const tex = new THREE.CanvasTexture(cv)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.wrapS = THREE.RepeatWrapping
@@ -161,8 +158,8 @@ function balloonTexture(colA, colB, colC) {
 }
 
 const PALETTES = [
-  ['#ff6b6b', '#fff5e6', '#4fd1c5'], ['#4fb8ff', '#ffffff', '#ffd166'], ['#ffd166', '#ff8fab', '#ffffff'],
-  ['#b28dff', '#fff5e6', '#ff6b6b'], ['#4fd1c5', '#ffffff', '#ff6b6b'], ['#ff8fab', '#ffffff', '#4fb8ff'],
+  ['#ff6b6b', '#fff5e6'], ['#4fb8ff', '#ffffff'], ['#ffd166', '#ff8fab'],
+  ['#b28dff', '#fff5e6'], ['#4fd1c5', '#ffffff'], ['#ff8fab', '#ffffff'],
 ]
 
 export class Life {
