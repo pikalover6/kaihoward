@@ -117,34 +117,39 @@ export function ridged(x, y) {
   return s
 }
 
-// ---- terrain height, shared formulation (GLSL string + JS) -----------------
-// x,z in world units; returns height above the ground plane (may be negative = water)
+// ---- the world's height, shared (GLSL string + JS) --------------------------
+// Islands and lakes, rolling hills that are terraced in places like a level built out
+// of steps, and ridged mountains. x,z in world units; water is at 0.
 export const GLSL_TERRAIN = /* glsl */ `
 float terrainH(vec2 p){
-  float cont = fbm3(p / 9000.0);
-  float mm = smoothstep(0.0, 0.5, fbm2(p / 15000.0 + 100.0));
-  float hills = fbm(p / 1100.0 + 5.0) * 95.0 + 55.0;
-  float mts = ridged(p / 2800.0) * 1900.0 * mm;
-  float h = cont * 160.0 + hills + mts;
-  float rv = abs(snoise(p / 4200.0 + 7.0) + fbm2(p / 800.0 + 3.0) * 0.18);
-  float river = 1.0 - smoothstep(0.015, 0.06, rv);
-  float lowland = 1.0 - smoothstep(160.0, 420.0, h);
-  h -= river * lowland * 70.0;
-  return h;
+  p += vec2(2400.0, -1300.0);
+  float cont = fbm3(p / 6000.0);
+  float land = smoothstep(-0.2, 0.1, cont);
+  float hills = (fbm(p / 1000.0 + 5.0) * 0.5 + 0.5) * 130.0;
+  float mtMask = smoothstep(0.1, 0.5, fbm2(p / 8000.0 + 40.0));
+  float mts = ridged(p / 2200.0) * 1100.0 * mtMask;
+  float h = hills + mts;
+  float terr = smoothstep(0.0, 0.35, fbm2(p / 5000.0 - 20.0)) * (1.0 - mtMask * 0.8);
+  float k = h / 34.0;
+  float stepped = (floor(k) + smoothstep(0.62, 1.0, fract(k))) * 34.0;
+  h = mix(h, stepped, terr);
+  return mix(-48.0, h + 3.0, land);
 }
 `
 const sm = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
 export function terrainH(x, z) {
-  const cont = fbm3(x / 9000, z / 9000)
-  const mm = sm(fbm2(x / 15000 + 100, z / 15000 + 100), 0, 0.5)
-  const hills = fbm(x / 1100 + 5, z / 1100 + 5) * 95 + 55
-  const mts = ridged(x / 2800, z / 2800) * 1900 * mm
-  let h = cont * 160 + hills + mts
-  const rv = Math.abs(snoise(x / 4200 + 7, z / 4200 + 7) + fbm2(x / 800 + 3, z / 800 + 3) * 0.18)
-  const river = 1 - sm(rv, 0.015, 0.06)
-  const lowland = 1 - sm(h, 160, 420)
-  h -= river * lowland * 70
-  return h
+  x += 2400; z -= 1300
+  const cont = fbm3(x / 6000, z / 6000)
+  const land = sm(cont, -0.2, 0.1)
+  const hills = (fbm(x / 1000 + 5, z / 1000 + 5) * 0.5 + 0.5) * 130
+  const mtMask = sm(fbm2(x / 8000 + 40, z / 8000 + 40), 0.1, 0.5)
+  const mts = ridged(x / 2200, z / 2200) * 1100 * mtMask
+  let h = hills + mts
+  const terr = sm(fbm2(x / 5000 - 20, z / 5000 - 20), 0, 0.35) * (1 - mtMask * 0.8)
+  const k = h / 34
+  const stepped = (Math.floor(k) + sm(k - Math.floor(k), 0.62, 1)) * 34
+  h = h + (stepped - h) * terr
+  return -48 + (h + 3 - -48) * land
 }
 
 // ---- cloud deck coverage, shared (GLSL string + JS); > 0 means cloud ------

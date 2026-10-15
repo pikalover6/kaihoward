@@ -54,7 +54,7 @@ export class CameraRig {
     // a camera blending between shots is carried along with the plane, or it'd be left behind at speed
     if (this.transition > 0) this.cur.pos.add(_v2.subVectors(flight.pos, this.lastPos))
     this.lastPos.copy(flight.pos)
-    const steady = flight.intent > 0.5 && flight.daze <= 0 && !flight.splat ? 1 : 0
+    const steady = flight.daze <= 0 && !flight.splat && !flight.oblivious ? 1 : 0
     this.steady += (steady - this.steady) * (1 - Math.exp(-dt * (steady ? 1.5 : 6)))
     const fov = Math.min(88, 58 + 12 * Math.log10(1 + Math.max(0, speed - 60) / 40))
     if (override) {
@@ -71,8 +71,8 @@ export class CameraRig {
       if (h.lengthSq() > 1e-6) _ql.setFromRotationMatrix(_m.lookAt(_zero, h.normalize(), UP))
       _qt.copy(flight.quat).slerp(_ql, 1 - this.steady)
       this.sq.slerp(_qt, 1 - Math.exp(-dt * rate))
-      const dist = 11.5 + Math.min(3, 1.5 * Math.log10(1 + speed / 300))
-      const off = _v2.set(0, 2.7 + 2.5 * (1 - this.steady), dist).applyQuaternion(this.sq)
+      const dist = 13.5 + Math.min(3, 1.5 * Math.log10(1 + speed / 300))
+      const off = _v2.set(0, 3.2 + 2.5 * (1 - this.steady), dist).applyQuaternion(this.sq)
       const eye = _v3.copy(flight.pos).add(off)
       // the camera's up is the plane's own up: blending in world-up forced a 180° roll over the top of a loop
       const up = _v2.copy(UP).applyQuaternion(this.sq)
@@ -81,7 +81,7 @@ export class CameraRig {
       this.lookAt(eye, look, up)
       T.fov = fov
     } else if (this.mode === 'cockpit') {
-      const eye = _v3.set(0, 1.28, 0.05).applyQuaternion(flight.quat).add(flight.pos)
+      const eye = _v3.set(0, 1.5, 0.15).applyQuaternion(flight.quat).add(flight.pos)
       T.pos.copy(eye)
       T.quat.copy(flight.quat)
       T.fov = 72
@@ -149,6 +149,9 @@ export class CameraRig {
       this.camera.position.add(_v2)
     }
     this.camera.quaternion.copy(cur.quat)
-    if (Math.abs(this.camera.fov - cur.fov) > 0.01) { this.camera.fov = cur.fov; this.camera.updateProjectionMatrix() }
+    // tall screens get a wider vertical view, so the plane doesn't fill the whole width
+    const portrait = this.camera.aspect < 1 ? Math.min(1.5, 1 / Math.sqrt(this.camera.aspect)) : 1
+    const shown = Math.min(110, cur.fov * portrait)
+    if (Math.abs(this.camera.fov - shown) > 0.01) { this.camera.fov = shown; this.camera.updateProjectionMatrix() }
   }
 }

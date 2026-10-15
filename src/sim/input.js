@@ -1,22 +1,38 @@
-// Keyboard / pointer / touch input -> normalised control axes.
+// Keyboard, gamepad and touch -> a handful of control axes.
+//   pitch  ↑↓ / W S / left stick       turn  ←→ / A D / left stick
+//   roll   Q E / bumpers               throttle  space / A / RT boost, shift / B / LT brake
+// Double-tap ← or → (or press X on a pad) for a barrel roll.
+const DEAD = 0.18
+const dz = v => (Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) / (1 - DEAD))
+
 export class Input {
   constructor(el) {
     this.el = el
     this.keys = new Set()
-    this.pitch = 0; this.roll = 0; this.yaw = 0; this.throttle = 0
     this.pointer = { x: 0, y: 0, down: false, dx: 0, dy: 0 }
-    this.touch = { active: false, sx: 0, sy: 0, x: 0, y: 0 }
+    this.touch = { active: false, id: null, sx: 0, sy: 0, x: 0, y: 0 }
     this.isTouch = window.matchMedia('(pointer: coarse)').matches
     this.listeners = {}
-    this.anyKey = false
     this.wheel = 0
     this.virtualThrottle = 0 // held on-screen buttons (touch)
+    this.lastTap = { key: '', t: 0 }
+    this.padPrev = []
+    this.usingPad = false
+
     this._onKeyDown = e => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return
       const k = e.key.toLowerCase()
-      if (!this.keys.has(k)) this.emit('press', k, e)
+      if (!this.keys.has(k)) {
+        this.emit('press', k, e)
+        const side = k === 'arrowleft' || k === 'a' ? -1 : k === 'arrowright' || k === 'd' ? 1 : 0
+        if (side) {
+          const now = performance.now()
+          if (this.lastTap.key === k && now - this.lastTap.t < 280) { this.emit('barrel', side); this.lastTap.key = '' }
+          else this.lastTap = { key: k, t: now }
+        }
+      }
       this.keys.add(k)
-      this.anyKey = true
+      this.usingPad = false
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault()
     }
     this._onKeyUp = e => this.keys.delete(e.key.toLowerCase())
@@ -29,8 +45,9 @@ export class Input {
       if (e.target !== this.el) return
       this.pointer.down = true
       this.pointer.x = e.clientX; this.pointer.y = e.clientY
-      if (e.pointerType === 'touch') {
+      if (e.pointerType === 'touch' && !this.touch.active) {
         this.touch.active = true
+        this.touch.id = e.pointerId
         this.touch.sx = this.touch.x = e.clientX
         this.touch.sy = this.touch.y = e.clientY
       }
@@ -40,13 +57,11 @@ export class Input {
       const dx = e.clientX - this.pointer.x, dy = e.clientY - this.pointer.y
       this.pointer.x = e.clientX; this.pointer.y = e.clientY
       if (this.pointer.down) { this.pointer.dx += dx; this.pointer.dy += dy }
-      if (this.touch.active) { this.touch.x = e.clientX; this.touch.y = e.clientY }
-      this.emit('pointermove', e)
+      if (this.touch.active && e.pointerId === this.touch.id) { this.touch.x = e.clientX; this.touch.y = e.clientY }
     }
     this._onPointerUp = e => {
       this.pointer.down = false
-      this.touch.active = false
-      this.emit('pointerup', e)
+      if (e.pointerId === this.touch.id) { this.touch.active = false; this.touch.id = null }
     }
     this._onWheel = e => { this.wheel += e.deltaY }
     window.addEventListener('pointerdown', this._onPointerDown)
@@ -58,28 +73,45 @@ export class Input {
 
   on(name, fn) { (this.listeners[name] ||= []).push(fn) }
   emit(name, ...args) { for (const fn of this.listeners[name] || []) fn(...args) }
-  has(...ks) { return ks.some(k => this.keys.has(k)) }
 
-  // read axes (call once per frame)
+  // read the axes (call once per frame)
   poll() {
     const k = this.keys
-    let pitch = 0, roll = 0, yaw = 0, throttle = 0
+    let pitch = 0, turn = 0, roll = 0, throttle = 0
     if (k.has('w') || k.has('arrowup')) pitch += 1
     if (k.has('s') || k.has('arrowdown')) pitch -= 1
-    if (k.has('a') || k.has('arrowleft')) roll -= 1
-    if (k.has('d') || k.has('arrowright')) roll += 1
-    if (k.has('q')) yaw -= 1
-    if (k.has('e')) yaw += 1
-    if (k.has('shift')) throttle += 1
-    if (k.has('control')) throttle -= 1
+    if (k.has('a') || k.has('arrowleft')) turn -= 1
+    if (k.has('d') || k.has('arrowright')) turn += 1
+    if (k.has('q')) roll -= 1
+    if (k.has('e')) roll += 1
+    if (k.has(' ')) throttle += 1
+    if (k.has('shift')) throttle -= 1
     throttle += this.virtualThrottle
     if (this.touch.active) {
-      const dx = (this.touch.x - this.touch.sx) / 90, dy = (this.touch.y - this.touch.sy) / 90
-      roll += Math.max(-1, Math.min(1, dx))
-      pitch += Math.max(-1, Math.min(1, -dy))
+      turn += Math.max(-1, Math.min(1, (this.touch.x - this.touch.sx) / 80))
+      pitch += Math.max(-1, Math.min(1, -(this.touch.y - this.touch.sy) / 80))
     }
-    this.pitch = pitch; this.roll = roll; this.yaw = yaw; this.throttle = throttle
-    const out = { pitch, roll, yaw, throttle, pdx: this.pointer.dx, pdy: this.pointer.dy, wheel: this.wheel }
+    // gamepad
+    const pads = navigator.getGamepads ? navigator.getGamepads() : []
+    for (const p of pads) {
+      if (!p || !p.connected) continue
+      const b = i => (p.buttons[i] ? p.buttons[i].value : 0)
+      const pressed = i => b(i) > 0.5 && !(this.padPrev[i] > 0.5)
+      const sx = dz(p.axes[0] || 0), sy = dz(p.axes[1] || 0)
+      if (sx || sy || b(0) || b(1) || b(6) || b(7)) this.usingPad = true
+      turn += sx
+      pitch -= sy
+      roll += b(5) - b(4)
+      throttle += Math.max(b(0), b(7)) - Math.max(b(1), b(6))
+      if (pressed(2)) this.emit('barrel', sx < -0.3 ? -1 : 1)
+      if (pressed(3)) this.emit('press', 'v')
+      if (pressed(9)) this.emit('press', 'escape')
+      if (pressed(8)) this.emit('press', 'r')
+      this.padPrev = p.buttons.map(x => x.value)
+      break
+    }
+    const clamp = v => Math.max(-1, Math.min(1, v))
+    const out = { pitch: clamp(pitch), turn: clamp(turn), roll: clamp(roll), throttle: clamp(throttle), pdx: this.pointer.dx, pdy: this.pointer.dy, wheel: this.wheel }
     this.pointer.dx = 0; this.pointer.dy = 0; this.wheel = 0
     return out
   }

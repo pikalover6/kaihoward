@@ -10,7 +10,7 @@ const projects = [
   { name: 'totally-not-an-llm', domain: 'huggingface.co', href: 'https://huggingface.co/totally-not-an-llm' },
 ]
 
-const VIEW_NAMES = { chase: 'chase', cockpit: 'cockpit', cinematic: 'cinematic', orbit: 'orbit' }
+const VIEW_NAMES = { chase: 'chase cam', cockpit: 'cockpit', cinematic: 'cinematic', orbit: 'orbit' }
 
 // the speedometer reads honestly up to here; past it the needle just goes round
 const GAUGE_MAX = 300
@@ -24,8 +24,7 @@ export default function App() {
   const fadeRef = useRef(null)
   const engineRef = useRef(null)
   const hud = useRef({})
-  const [state, setState] = useState({ mode: 'chase', draw: 'off', sound: false, landing: false, engine: true })
-  const [card, setCard] = useState(false)
+  const [state, setState] = useState({ mode: 'chase', sound: false, paused: false, title: true })
   const [pops, setPops] = useState([])
   const [tier, setTier] = useState(null)
   const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
@@ -55,101 +54,98 @@ export default function App() {
       put('num', h.text.num)
       put('unit', h.text.unit)
       put('status', h.status)
-      put('dial', h.dial ? `dial ${h.dial.num} ${h.dial.unit}` : '')
-      const cls = 'speedo' + (h.engine ? '' : ' off') + (mph > 1e6 ? ' wild' : '')
+      put('coins', String(h.coins))
+      const cls = 'speedo' + (h.boost > 0 ? ' boosting' : '') + (mph > 1e6 ? ' wild' : '')
       if (hud.current.root && shown.cls !== cls) { hud.current.root.className = cls; shown.cls = cls }
     }
     engine.onPop = p => {
       const id = ++popId
-      const tilt = (Math.random() - 0.5) * 18
+      const tilt = (Math.random() - 0.5) * 16
       setPops(ps => [...ps.slice(-5), { ...p, id, tilt }])
-      setTimeout(() => setPops(ps => ps.filter(q => q.id !== id)), 1300)
+      setTimeout(() => setPops(ps => ps.filter(q => q.id !== id)), 1400)
     }
     engine.onTier = name => setTier({ name, id: ++tierId })
     engineRef.current = engine
     return () => engine.dispose()
   }, [])
 
-  useEffect(() => {
-    const onKey = e => { if (e.key === 'Escape') setCard(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
   const eng = () => engineRef.current
-  const drawing = state.draw !== 'off'
   const hold = dir => ({
-    onPointerDown: e => { e.currentTarget.setPointerCapture?.(e.pointerId); if (eng()) eng().input.virtualThrottle = dir },
+    onPointerDown: e => { e.currentTarget.setPointerCapture?.(e.pointerId); const en = eng(); if (en) { en.input.virtualThrottle = dir; if (en.state.title) en.emit({ title: false }) } },
     onPointerUp: () => { if (eng()) eng().input.virtualThrottle = 0 },
     onPointerCancel: () => { if (eng()) eng().input.virtualThrottle = 0 },
   })
 
   return (
-    <div className={'stage' + (drawing ? ' drawing' : '')}>
+    <div className={'stage' + (state.paused ? ' paused' : '')}>
       <canvas ref={canvasRef} className="scene" />
 
-      <button className="mono" onClick={() => setCard(c => !c)} aria-label="About">kh</button>
+      <button className="mono" onClick={() => eng()?.togglePause()} aria-label="About and pause">kh</button>
 
-      {!isTouch && (
+      <div className="coins" aria-hidden="true"><i className="coin" /><span>×</span><b ref={el => { hud.current.coins = el }}>0</b></div>
+
+      {!isTouch && !state.paused && (
         <div className="hint left">
-          <span><kbd>↑↓←→</kbd> fly</span>
-          <span><kbd>q e</kbd> rudder</span>
-          <span><kbd>shift ctrl</kbd> speed (no limit)</span>
-          <span><kbd>space</kbd> engine {state.engine ? 'off' : 'on'}</span>
+          <span><kbd>←→</kbd> turn <kbd>↑↓</kbd> pitch</span>
+          <span><kbd>space</kbd> boost <kbd>shift</kbd> brake</span>
+          <span><kbd>q e</kbd> roll <kbd>←←</kbd> barrel roll</span>
         </div>
       )}
-      {!isTouch && (
+      {!isTouch && !state.paused && (
         <div className="hint right">
-          <span><kbd>v</kbd> view</span>
-          <span><kbd>f</kbd> {drawing ? 'stop' : 'draw a path'}</span>
+          <span><kbd>v</kbd> {VIEW_NAMES[state.mode]}</span>
           <span><kbd>m</kbd> sound {state.sound ? 'on' : 'off'}</span>
-          <span><kbd>r</kbd> respawn</span>
+          <span><kbd>r</kbd> respawn <kbd>esc</kbd> pause</span>
         </div>
       )}
-      {isTouch && (
-        <div className="touch left">
-          <span className="drag">drag to fly</span>
-          <button {...hold(1)}>faster</button>
-          <button {...hold(-1)}>slower</button>
-          <button className={state.engine ? '' : 'lit'} onClick={() => eng()?.toggleEngine()}>{state.engine ? 'engine' : 'start'}</button>
-        </div>
-      )}
-      {isTouch && (
-        <div className="touch right">
-          <button onClick={() => eng()?.cycleView()}>view</button>
-          <button onClick={() => eng()?.toggleDraw()}>{drawing ? 'stop' : 'draw'}</button>
-          <button onClick={() => eng()?.toggleSound()}>{state.sound ? 'mute' : 'sound'}</button>
-          <button onClick={() => eng()?.respawn()}>respawn</button>
-        </div>
+      {isTouch && !state.paused && (
+        <>
+          <div className="touch-hint">drag anywhere to steer</div>
+          <div className="touch right">
+            <button className="big boost" {...hold(1)}>boost</button>
+            <button className="big brake" {...hold(-1)}>brake</button>
+          </div>
+          <div className="touch top">
+            <button onClick={() => eng()?.cycleView()}>view</button>
+            <button onClick={() => eng()?.toggleSound()}>{state.sound ? 'mute' : 'sound'}</button>
+            <button onClick={() => eng()?.respawn()}>reset</button>
+          </div>
+        </>
       )}
 
       <div className="speedo" ref={el => { hud.current.root = el }} aria-hidden="true">
         <svg className="gauge" viewBox="0 0 60 60">
-          <path className="arc" d={`M ${polar(-135, 24).join(' ')} A 24 24 0 1 1 ${polar(135, 24).join(' ')}`} />
+          <circle className="face" cx="30" cy="30" r="27" />
+          <path className="arc" d={`M ${polar(-135, 23).join(' ')} A 23 23 0 1 1 ${polar(135, 23).join(' ')}`} />
           {TICKS.map(a => {
-            const [x1, y1] = polar(a, 19.5), [x2, y2] = polar(a, 24)
+            const [x1, y1] = polar(a, 18), [x2, y2] = polar(a, 23)
             return <line key={a} className={a > 90 ? 'tick red' : 'tick'} x1={x1} y1={y1} x2={x2} y2={y2} />
           })}
           <line className="needle" x1="30" y1="33" x2="30" y2="10" ref={el => { hud.current.needle = el }} transform="rotate(-135 30 30)" />
-          <circle className="hub" cx="30" cy="30" r="3" />
+          <circle className="hub" cx="30" cy="30" r="3.2" />
         </svg>
         <div className="readout">
           <div className="speed"><b ref={el => { hud.current.num = el }}>139</b> <span ref={el => { hud.current.unit = el }}>mph</span></div>
-          <small ref={el => { hud.current.status = el }}>engine on</small>
-          <small className="dial" ref={el => { hud.current.dial = el }} />
+          <small ref={el => { hud.current.status = el }} />
         </div>
       </div>
 
-      {state.draw === 'idle' && <div className="center">draw a path</div>}
+      {state.title && !state.paused && (
+        <div className="title" aria-hidden="true">
+          <div className="logo"><span className="name">kai howard</span><span className="sixtyfour">64</span></div>
+          <div className="press">{isTouch ? 'touch to fly' : 'press any key to fly'}</div>
+        </div>
+      )}
       <div key={state.mode} className="flash">{VIEW_NAMES[state.mode]}</div>
       {tier && <div key={tier.id} className="tier">{tier.name}</div>}
       {pops.map(p => (
         <span key={p.id} className={'pop ' + p.kind} style={{ left: p.x, top: p.y, '--tilt': `${p.tilt}deg` }}>{p.text}</span>
       ))}
 
-      {card && (
-        <div className="card-wrap" onClick={() => setCard(false)}>
-          <div className="card" onClick={e => e.stopPropagation()}>
+      {state.paused && (
+        <div className="pause-wrap" onClick={() => eng()?.togglePause(false)}>
+          <div className="pause" onClick={e => e.stopPropagation()}>
+            <div className="pause-title">pause</div>
             <h1>kaihoward.com</h1>
             <a className="mail" href="mailto:kaihoward106@gmail.com">kaihoward106@gmail.com</a>
             <nav>
@@ -159,6 +155,7 @@ export default function App() {
                 </a>
               ))}
             </nav>
+            <button className="resume" onClick={() => eng()?.togglePause(false)}>resume</button>
           </div>
         </div>
       )}
