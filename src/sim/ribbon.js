@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { LIGHT } from './n64.js'
 
 const vert = /* glsl */ `
 attribute float aAlpha;
@@ -13,22 +14,19 @@ void main(){
 `
 const frag = /* glsl */ `
 uniform vec3 uColor, uFogColor;
-uniform float uFogDensity, uOpacity;
+uniform float uFogNear, uFogFar, uOpacity;
 varying float vAlpha;
 varying float vFogDepth;
 void main(){
-  float fogF = 1.0 - exp(-uFogDensity * uFogDensity * vFogDepth * vFogDepth);
-  vec3 c = mix(uColor, uFogColor, fogF);
+  vec3 c = mix(uColor, uFogColor, clamp((vFogDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0));
   float a = clamp(vAlpha * uOpacity, 0.0, 1.0);
   gl_FragColor = vec4(c * a, a);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
 }
 `
 
 // A trailing ribbon of N samples. Each sample stores centre, side vector and alpha.
 export class Ribbon {
-  constructor(n, width, color, opacity, fogUniforms, additive = false) {
+  constructor(n, width, color, opacity, additive = false) {
     this.n = n
     this.width = width
     this.centers = new Float32Array(n * 3)
@@ -52,8 +50,9 @@ export class Ribbon {
       uniforms: {
         uColor: { value: new THREE.Color(color) },
         uOpacity: { value: opacity },
-        uFogColor: fogUniforms.color,
-        uFogDensity: fogUniforms.density,
+        uFogColor: LIGHT.uFogColor,
+        uFogNear: LIGHT.uFogNear,
+        uFogFar: LIGHT.uFogFar,
       },
       vertexShader: vert,
       fragmentShader: frag,
@@ -66,6 +65,7 @@ export class Ribbon {
     this.mesh.frustumCulled = false
     this.mesh.renderOrder = 20
     this.last = new THREE.Vector3(1e9, 1e9, 1e9)
+    this.maxGap = 40
   }
 
   clear() { this.filled = 0; this.alphas.fill(0); this.alp.array.fill(0); this.alp.needsUpdate = true }
@@ -78,7 +78,7 @@ export class Ribbon {
   // push a new sample at the head (index 0) and rebuild
   push(center, side, alpha, minSpacing = 0.25) {
     const n = this.n
-    if (this.filled > 0 && center.distanceToSquared(this.last) > 40 * 40) this.clear() // teleported
+    if (this.filled > 0 && center.distanceToSquared(this.last) > this.maxGap * this.maxGap) this.clear() // teleported, or just too fast to draw
     if (center.distanceToSquared(this.last) < minSpacing * minSpacing && this.filled > 0) {
       // update the head only
       this.centers[0] = center.x; this.centers[1] = center.y; this.centers[2] = center.z

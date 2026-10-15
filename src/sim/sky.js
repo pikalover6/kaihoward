@@ -1,197 +1,136 @@
 import * as THREE from 'three'
-import { GLSL_NOISE, GLSL_SRGB } from './noise.js'
-import { SUN_DIR, MOON_DIR, CLOUD_Y } from './constants.js'
+import { GLSL_NOISE } from './noise.js'
+import { SUN_DIR } from './n64.js'
+import { LID_Y } from './constants.js'
+
+// A painted sky, Frutiger Aero by way of a 64-bit cartridge: a deep glossy blue, a band of
+// chunky clouds round the horizon, a radiant sun, and two ribbons of light swooshing across
+// it like a 2007 desktop. Stars once you're up near the lid. Plus plaid, for emergencies.
 
 const vert = /* glsl */ `
 varying vec3 vDir;
 void main(){
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vDir = wp.xyz - cameraPosition;
-  gl_Position = projectionMatrix * viewMatrix * wp;
+  vDir = position;
+  vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  gl_Position = p.xyww;
 }
 `
-
 const frag = /* glsl */ `
-precision highp float;
-uniform vec3 uSunDir, uMoonDir, uFogColor;
-uniform float uTime, uAlt, uBelow, uEnv, uCeil, uFogDensity;
-uniform vec4 uShoot[3];
-uniform vec3 uShootTan[3];
+uniform vec3 uSunDir, uZenith, uHorizon, uBelow;
+uniform float uTime, uSpace, uPlaid;
+uniform vec4 uRipple;
 varying vec3 vDir;
 ${GLSL_NOISE}
-${GLSL_SRGB}
+
+vec3 sett(float x){
+  x = fract(x);
+  vec3 c = vec3(0.75, 0.12, 0.14);
+  c = mix(c, vec3(0.1, 0.42, 0.22), step(0.10, x) * step(x, 0.40));
+  c = mix(c, vec3(0.1, 0.14, 0.5), step(0.55, x) * step(x, 0.74));
+  c = mix(c, vec3(1.0, 0.86, 0.35), step(0.465, x) * step(x, 0.49));
+  c = mix(c, vec3(0.95), step(0.86, x) * step(x, 0.875));
+  return c;
+}
 
 void main(){
   vec3 d = normalize(vDir);
   float y = d.y;
-  float hi = smoothstep(200.0, 4200.0, uAlt);
+  vec3 zen = mix(uZenith, vec3(0.02, 0.03, 0.12), uSpace);
+  vec3 hor = mix(uHorizon, vec3(0.25, 0.32, 0.6), uSpace * 0.8);
+  vec3 col = mix(hor, zen, pow(clamp(y, 0.0, 1.0), 0.5));
+  col = mix(col, uBelow, smoothstep(0.0, -0.25, y));
+  float az = atan(d.z, d.x);
 
-  vec3 zenith = mix(S(0.10, 0.22, 0.66), S(0.02, 0.05, 0.28), hi);
-  vec3 upper  = mix(S(0.16, 0.42, 0.90), S(0.06, 0.16, 0.60), hi);
-  vec3 mid    = S(0.36, 0.72, 0.98);
-  vec3 horizon = uFogColor;
-
-  vec3 col = mix(horizon, mid, smoothstep(-0.01, 0.10, y));
-  col = mix(col, upper, smoothstep(0.10, 0.36, y));
-  col = mix(col, zenith, smoothstep(0.36, 0.85, y));
-
-  // soft diagonal light rays / aurora, like the wallpaper streaks
-  vec3 a1 = normalize(vec3(0.8, 0.25, 0.55));
-  vec3 a2 = normalize(vec3(-0.3, 0.2, 0.93));
-  float u1 = dot(d, a1) * 9.0 + uTime * 0.015;
-  float u2 = dot(d, a2) * 7.0 - uTime * 0.011;
-  float n1 = fbm3(vec2(u1 * 0.7, dot(d, a2) * 3.0 + uTime * 0.02));
-  float ray1 = pow(0.5 + 0.5 * sin(u1 * 3.0 + n1 * 2.5), 7.0);
-  float ray2 = pow(0.5 + 0.5 * sin(u2 * 4.0 + n1 * 1.5), 9.0);
-  float rayMask = smoothstep(0.12, 0.5, y);
-  vec3 rayCol = mix(S(0.45, 0.95, 1.0), S(0.62, 0.55, 1.0), 0.5 + 0.5 * sin(u1 * 0.5 + 1.0));
-  col += rayCol * (ray1 * 0.16 + ray2 * 0.10) * rayMask * (1.0 - uBelow);
-
-  // sun
-  float sd = max(dot(d, uSunDir), 0.0);
-  vec3 sunCol = S(1.0, 0.97, 0.9);
-  col += sunCol * (smoothstep(0.9993, 0.9997, sd) * 3.0 + pow(sd, 60.0) * 0.55 + pow(sd, 7.0) * 0.14);
-  col += S(1.0, 0.9, 0.75) * pow(sd, 2.0) * 0.05;
-
-  // stars: sparse crosses + fine dust, in an azimuth/elevation grid
-  vec2 sky = vec2(atan(d.z, d.x) * 22.0, asin(clamp(y, -1.0, 1.0)) * 40.0);
-  float starMask = smoothstep(0.14, 0.5, y) * (1.0 - pow(sd, 6.0)) * (0.55 + 0.45 * hi);
-  vec2 cell = floor(sky);
-  vec2 f = sky - cell;
-  float h = hash12(cell);
-  vec2 off = hash22(cell + 7.0) * 0.6 + 0.2;
-  vec2 q = f - off;
-  float tw = 0.65 + 0.35 * sin(uTime * (1.5 + h * 3.0) + h * 40.0);
-  float bright = step(0.93, h);
-  float dust = bright * smoothstep(0.06, 0.0, length(q)) * tw;
-  float big = step(0.985, h);
-  float crossStar = big * (exp(-abs(q.x) * 30.0) * exp(-abs(q.y) * 9.0) + exp(-abs(q.y) * 30.0) * exp(-abs(q.x) * 9.0)) * 0.9 * tw;
-  float glow = big * exp(-length(q) * 10.0) * 0.5;
-  col += vec3(0.9, 0.95, 1.0) * (dust * 0.8 + crossStar + glow) * starMask * (1.0 - uBelow);
-
-  // moon
-  vec3 mt = normalize(cross(uMoonDir, vec3(0.0, 1.0, 0.0)));
-  vec3 mb = cross(mt, uMoonDir);
-  float md = dot(d, uMoonDir);
-  if (md > 0.0) {
-    vec2 mp = vec2(dot(d, mt), dot(d, mb)) / 0.065;
-    float r = length(mp);
-    float disc = 1.0 - smoothstep(0.97, 1.0, r);
-    vec3 n = vec3(mp, sqrt(max(0.0, 1.0 - min(r * r, 1.0))));
-    float light = clamp(dot(n, normalize(vec3(0.75, 0.35, 0.6))), 0.0, 1.0);
-    float crater = fbm(mp * 3.0 + 4.0) * 0.5 + snoise(mp * 9.0) * 0.12;
-    vec3 mc = S(0.9, 0.95, 1.0) * (0.55 + 0.6 * light) * (1.0 - max(crater, 0.0) * 0.3);
-    float halo = exp(-max(r - 1.0, 0.0) * 2.5) * 0.55 + exp(-max(r - 1.0, 0.0) * 0.45) * 0.14;
-    col = mix(col, mc, disc * 0.96);
-    col += S(0.7, 0.85, 1.0) * halo * (1.0 - disc);
+  // the swooshes: two glowing ribbons, slowly undulating
+  for (int k = 0; k < 2; k++) {
+    float fk = float(k);
+    float centre = 0.3 + 0.12 * fk + 0.08 * sin(az * (2.0 + fk) + uTime * (0.05 + 0.03 * fk) + fk * 2.0) + 0.03 * sin(az * 5.0 - uTime * 0.04);
+    float width = 0.016 + 0.01 * sin(az * 3.0 + fk + uTime * 0.03);
+    float band = exp(-pow((y - centre) / width, 2.0));
+    float fade = smoothstep(-0.3, 0.8, sin(az + fk * 2.6 + uTime * 0.02));
+    vec3 rc = mix(vec3(0.55, 1.0, 0.72), vec3(0.62, 0.92, 1.0), fk);
+    float k2 = (1.0 - uSpace * 0.4) * (1.0 - uPlaid);
+    col += rc * band * fade * 0.42 * k2;
+    col += rc * exp(-pow((y - centre) / (width * 6.0), 2.0)) * fade * 0.07 * k2;
   }
 
-  // shooting stars
-  for (int i = 0; i < 3; i++) {
-    vec3 s0 = uShoot[i].xyz;
-    float p = (uTime - uShoot[i].w) / 1.1;
-    if (p < 0.0 || p > 1.0) continue;
-    if (dot(d, s0) < 0.85) continue;
-    vec3 tg = uShootTan[i];
-    vec3 bn = cross(s0, tg);
-    float u = dot(d - s0, tg);
-    float v = dot(d - s0, bn);
-    float head = p * 0.32;
-    float along = smoothstep(head - 0.11, head, u) * (1.0 - step(head, u));
-    float across = exp(-v * v * 60000.0);
-    float fade = sin(p * 3.14159);
-    col += vec3(0.9, 0.95, 1.0) * along * across * fade * 1.6;
+  // the cloud band: two tones, hard edges, drifting
+  float band = smoothstep(-0.02, 0.06, y) * (1.0 - smoothstep(0.1, 0.3, y));
+  float n = fbm3(vec2(az * 3.0 + uTime * 0.004, y * 9.0)) + fbm3(vec2(az * 7.0 - uTime * 0.006, y * 18.0)) * 0.4;
+  float cloud = step(0.12 + y * 2.2, n) * band;
+  float shade = step(0.3 + y * 2.2, n + 0.08);
+  vec3 cc = mix(vec3(0.84, 0.93, 1.0), vec3(1.0), shade);
+  col = mix(col, mix(cc, hor, uSpace * 0.7), cloud * (1.0 - uSpace * 0.5));
+
+  // stars, up near the lid
+  vec2 g = vec2(az * 40.0, asin(clamp(y, -1.0, 1.0)) * 40.0);
+  float h = hash12(floor(g));
+  float star = step(0.985, h) * step(0.08, y) * uSpace;
+  col = mix(col, vec3(1.0, 1.0, 0.85), star * (0.6 + 0.4 * sin(uTime * 3.0 + h * 50.0)));
+
+  // the sun: a white-hot disc, a glow, and slowly turning rays
+  vec3 sd = normalize(uSunDir);
+  float sdot = dot(d, sd);
+  float ang = acos(clamp(sdot, -1.0, 1.0));
+  vec3 st = normalize(cross(sd, vec3(0.0, 1.0, 0.0)));
+  vec3 sb = cross(st, sd);
+  float ra = atan(dot(d, sb), dot(d, st));
+  float rays = pow(0.5 + 0.5 * sin(ra * 11.0 + uTime * 0.12), 8.0) * exp(-ang * 3.5) * step(0.0, sdot);
+  col += vec3(1.0, 0.99, 0.9) * rays * 0.22;
+  col += vec3(1.0, 0.96, 0.82) * exp(-ang * 8.0) * 0.5;
+  col = mix(col, vec3(1.0, 1.0, 0.96), smoothstep(0.075, 0.06, ang));
+
+  // the lid, bonked
+  float rt = uTime - uRipple.w;
+  if (rt > 0.0 && rt < 3.5) {
+    float ra2 = acos(clamp(dot(d, uRipple.xyz), -1.0, 1.0));
+    float ring = 0.0;
+    for (int k = 0; k < 4; k++) { float r0 = rt * 1.25 - float(k) * 0.2; ring += step(abs(ra2 - r0), 0.025) * step(0.0, r0); }
+    col = mix(col, vec3(1.0), ring * 0.8 * (1.0 - rt / 3.5));
   }
 
-  // under the cloud sea: hazy, and the sky fades into the fog the same way the cloud ceiling does
-  vec3 dim = mix(col, uFogColor * 0.92, 0.7);
-  float ceilD = uCeil / max(y, 0.02);
-  float ceilFog = 1.0 - exp(-uFogDensity * uFogDensity * ceilD * ceilD);
-  vec3 under = mix(dim, uFogColor, max(ceilFog, 1.0 - smoothstep(-0.02, 0.12, y)));
-  under *= 1.0 - 0.14 * smoothstep(0.05, 0.6, y);
-  col = mix(col, under, uBelow);
-
-  if (any(isnan(col))) col = uFogColor;
+  if (uPlaid > 0.0) {
+    vec2 pp = vec2(az * 2.0, asin(clamp(y, -1.0, 1.0)) * 4.0);
+    col = mix(col, (sett(pp.x) + sett(pp.y)) * 0.5, uPlaid * 0.9);
+  }
   gl_FragColor = vec4(col, 1.0);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
 }
 `
 
-export function fogColorFor(alt) {
-  // returns sRGB THREE.Color for the fog / horizon at a given altitude
-  const c = new THREE.Color()
-  const above = new THREE.Color('#cfe6ff')
-  const inCloud = new THREE.Color('#f4f8ff')
-  const below = new THREE.Color('#93a7c2')
-  const ground = new THREE.Color('#b3c4d8')
-  const r = alt - CLOUD_Y
-  if (r > 30) c.copy(above)
-  else if (r > -110) c.copy(inCloud).lerp(above, THREE.MathUtils.smoothstep(r, -30, 30))
-  else c.copy(below).lerp(inCloud, THREE.MathUtils.smoothstep(r, -300, -110))
-  c.lerp(ground, THREE.MathUtils.smoothstep(-r, 1800, 3200))
-  return c
-}
+const ZENITH = new THREE.Color('#1670e0'), HORIZON = new THREE.Color('#bdeeff'), BELOW = new THREE.Color('#8ccbef')
+const SPACE_HAZE = new THREE.Color(0.25, 0.32, 0.6)
+const _c = new THREE.Color()
 
-export function fogDensityFor(alt) {
-  const r = alt - CLOUD_Y
-  const inside = Math.exp(-Math.pow((r + 35) / 55, 2))
-  let base
-  if (r > 0) base = 0.000075
-  else base = THREE.MathUtils.lerp(0.00032, 0.00022, THREE.MathUtils.smoothstep(-r, 150, 1500))
-  base = THREE.MathUtils.lerp(base, 0.00019, THREE.MathUtils.smoothstep(-r, 1800, 3200))
-  return base + inside * 0.006
+// the colour the far distance fades to at a given altitude (and what the fog uses)
+export function hazeFor(alt) {
+  const space = THREE.MathUtils.smoothstep(alt, 2500, LID_Y)
+  return _c.copy(HORIZON).lerp(SPACE_HAZE, space * 0.8)
 }
 
 export class Sky {
   constructor() {
     this.uniforms = {
       uSunDir: { value: SUN_DIR.clone() },
-      uMoonDir: { value: MOON_DIR.clone() },
-      uFogColor: { value: fogColorFor(200) },
+      uZenith: { value: ZENITH.clone() },
+      uHorizon: { value: HORIZON.clone() },
+      uBelow: { value: BELOW.clone() },
       uTime: { value: 0 },
-      uAlt: { value: 200 },
-      uBelow: { value: 0 },
-      uEnv: { value: 0 },
-      uCeil: { value: 0 },
-      uFogDensity: { value: 0.0001 },
-      uShoot: { value: [new THREE.Vector4(0, 1, 0, -100), new THREE.Vector4(0, 1, 0, -100), new THREE.Vector4(0, 1, 0, -100)] },
-      uShootTan: { value: [new THREE.Vector3(1, 0, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(1, 0, 0)] },
+      uSpace: { value: 0 },
+      uPlaid: { value: 0 },
+      uRipple: { value: new THREE.Vector4(0, 1, 0, -100) },
     }
     this.material = new THREE.ShaderMaterial({
-      uniforms: this.uniforms,
-      vertexShader: vert,
-      fragmentShader: frag,
-      side: THREE.BackSide,
-      depthWrite: false,
-      depthTest: false,
-      fog: false,
+      uniforms: this.uniforms, vertexShader: vert, fragmentShader: frag,
+      side: THREE.BackSide, depthWrite: false, depthTest: false,
     })
-    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(900, 48, 24), this.material)
+    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(1000, 32, 16), this.material)
     this.mesh.renderOrder = -100
     this.mesh.frustumCulled = false
-    this.nextShoot = 3
-    this.shootIdx = 0
   }
 
-  update(t, camera, alt) {
+  update(t, camera) {
     this.uniforms.uTime.value = t
-    this.uniforms.uAlt.value = alt
-    this.uniforms.uBelow.value = THREE.MathUtils.smoothstep(-(alt - CLOUD_Y), 60, 300)
-    this.uniforms.uFogColor.value.copy(fogColorFor(alt))
-    this.uniforms.uCeil.value = Math.max(0, CLOUD_Y - alt)
-    this.uniforms.uFogDensity.value = fogDensityFor(alt)
+    this.uniforms.uSpace.value = THREE.MathUtils.smoothstep(camera.position.y, 2500, LID_Y)
     this.mesh.position.copy(camera.position)
-    if (t > this.nextShoot) {
-      this.nextShoot = t + 3 + Math.random() * 7
-      const i = this.shootIdx++ % 3
-      const az = Math.random() * Math.PI * 2
-      const el = 0.4 + Math.random() * 0.9
-      const dir = new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el))
-      const rnd = new THREE.Vector3(Math.random() - 0.5, -0.6 - Math.random() * 0.4, Math.random() - 0.5)
-      const tan = rnd.sub(dir.clone().multiplyScalar(rnd.dot(dir))).normalize()
-      this.uniforms.uShoot.value[i].set(dir.x, dir.y, dir.z, t)
-      this.uniforms.uShootTan.value[i].copy(tan)
-    }
   }
 }
