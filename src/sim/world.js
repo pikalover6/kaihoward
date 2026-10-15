@@ -126,10 +126,15 @@ void main(){
   float depth = -bed;
   vec3 c = texture2D(tWater, w / 60.0 + vec2(uTime * 0.02, uTime * 0.013)).rgb;
   c = mix(c, texture2D(tWater, w / 37.0 - vec2(uTime * 0.017, -uTime * 0.01)).rgb, 0.5);
-  c = mix(vec3(0.35, 0.85, 0.85), c, smoothstep(0.0, 14.0, depth));
+  c = mix(vec3(0.3, 0.9, 0.86), c, smoothstep(0.0, 14.0, depth));
   float foam = step(depth, 2.2 + sin(uTime * 2.0 + w.x * 0.05 + w.y * 0.04) * 0.8);
   c = mix(c, vec3(0.95, 1.0, 1.0), foam);
   c *= n64Light(vec3(0.0, 1.0, 0.0)) * 1.05;
+  // glossy: the sun's reflection, broken up into glitter
+  vec3 V = normalize(cameraPosition - vWorld);
+  float glint = pow(max(dot(reflect(-V, vec3(0.0, 1.0, 0.0)), normalize(uSunDir)), 0.0), 22.0);
+  float sparkle = step(0.55, snoise(w / 2.5 + vec2(uTime * 0.9, -uTime * 0.7))) * glint;
+  c += vec3(1.0, 1.0, 0.95) * (glint * 0.3 + sparkle * 0.9) * (1.0 - foam);
   gl_FragColor = vec4(mix(c, uFogColor, n64Fog(vDepth)), 1.0);
 }
 `
@@ -243,6 +248,7 @@ export class World {
     this.rings = new Set()
     this.coins = new Set()
     this.spinners = new Set()
+    this.movers = [] // shapes that fly about on their own (other aircraft)
     this.taken = new Set() // coins already collected, by id
     this.hcache = new Map()
   }
@@ -297,6 +303,10 @@ export class World {
     }
     scan(this.cells, CELL, 220)
     scan(this.chunks, CHUNK, 20)
+    for (const s of this.movers) {
+      const dx = s.c.x - pos.x, dy = s.c.y - pos.y, dz = s.c.z - pos.z, rr = r + s.bound
+      if (dx * dx + dy * dy + dz * dz < rr * rr) out.push(s)
+    }
     return out.length
   }
 

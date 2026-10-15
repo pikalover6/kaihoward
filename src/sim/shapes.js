@@ -13,9 +13,10 @@ export const MAT = {
   water: { name: 'water', k: 70, c: 5, drag: 0.12, mu: 0.6, solid: false },
   leaves: { name: 'leaves', k: 18, c: 4, drag: 1.5, mu: 2, solid: false },
   cloud: { name: 'cloud', k: 14, c: 2.6, drag: 0.25, mu: 0.4, solid: false, idle: true }, // only catches the idle
+  metal: { name: 'metal', k: 240, c: 16, drag: 20, mu: 0.3, bounce: 0.7, solid: true }, // other people's aircraft
 }
 
-const _p = new THREE.Vector3(), _q = new THREE.Quaternion()
+const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _qb = new THREE.Quaternion()
 
 // Signed-distance colliders (negative inside). sdf(p, n) writes the outward normal into n.
 class Shape {
@@ -93,5 +94,23 @@ export class Torus extends Shape {
     if (d > 1e-6) n.set(ux * qx / d, qy / d, uz * qx / d); else n.set(0, 1, 0)
     n.applyQuaternion(_q.copy(this.qi))
     return d - this.r
+  }
+}
+
+// an ellipsoid that flies about: centre c, turned by q, moving at vel. owner is whoever it belongs to
+export class Body extends Shape {
+  constructor(rx, ry, rz, mat, owner) {
+    super(mat); this.rad = new THREE.Vector3(rx, ry, rz); this.bound = Math.max(rx, ry, rz)
+    this.q = new THREE.Quaternion(); this.vel = new THREE.Vector3(); this.owner = owner
+  }
+  sdf(p, n) {
+    const R = this.rad
+    const l = _p.subVectors(p, this.c).applyQuaternion(_qb.copy(this.q).invert())
+    const x = l.x / R.x, y = l.y / R.y, z = l.z / R.z
+    const k = Math.sqrt(x * x + y * y + z * z)
+    n.set(x / R.x, y / R.y, z / R.z)
+    if (n.lengthSq() > 1e-12) n.normalize(); else n.set(0, 1, 0)
+    n.applyQuaternion(this.q)
+    return (k - 1) * Math.min(R.x, R.y, R.z)
   }
 }

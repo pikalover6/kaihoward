@@ -128,7 +128,7 @@ void main(){
 `
 
 class Puffs {
-  constructor(scene, n = 120) {
+  constructor(scene, n = 900) {
     this.n = n
     this.list = []
     const quad = new THREE.PlaneGeometry(1, 1)

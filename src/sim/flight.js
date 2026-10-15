@@ -50,6 +50,13 @@ import { MAT } from './shapes.js'
      painting going by: you ride up and over its hills, and you go straight
      through anything standing on it, leaving a hole the shape of a plane. Dive
      into it hard enough, though, and it'll still splat you.
+
+ 10. A SPIN IS A SHIELD. Anything that hits a plane rolling flat out glances off
+     it and goes back the way it came. Roll too many times in a row, though, and
+     the pilot gets dizzy.
+
+  Things that move hit you as hard as you're moving relative to them (6 still
+  applies), and if one of them splats you, you ride along on it for a moment.
 */
 
 export const G = 28 // u/s² (a unit is about a metre; cartoons fall fast)
@@ -75,6 +82,8 @@ export const TOON = {
   // the pilot's hands
   pitchRate: 2.0, turnRate: 1.5, rollRate: 3.2, turnBank: 0.9, alpha: 16,
   rollTrim: 2.2, pitchTrim: 3, trimRate: 0.8, barrelRate: 9,
+  // 10 · spin
+  shieldSpin: 6, dizzyPerRoll: 0.5, dizzyFade: 0.25, dizzyTime: 1.3, // three in a row is fine; the fourth isn't
 }
 
 // points on the hull that can touch things (plane frame: x right, y up, nose at -z)
@@ -98,12 +107,13 @@ const _rp = new THREE.Vector3(), _p = new THREE.Vector3(), _vp = new THREE.Vecto
 
 // contacts found this substep
 const MAXC = 64
-const contacts = Array.from({ length: MAXC }, () => ({ r: new THREE.Vector3(), p: new THREE.Vector3(), n: new THREE.Vector3(), d: 0, mat: null }))
+const contacts = Array.from({ length: MAXC }, () => ({ r: new THREE.Vector3(), p: new THREE.Vector3(), n: new THREE.Vector3(), d: 0, mat: null, shape: null }))
 const found = { n: 0, deepest: 0, deepN: null }
-function addContact(r, P, d, n, mat) {
+const STILL = new THREE.Vector3()
+function addContact(r, P, d, n, mat, shape = null) {
   if (d <= 0 || found.n >= MAXC) return
   const c = contacts[found.n++]
-  c.r.copy(r); c.p.copy(P); c.n.copy(n); c.d = d; c.mat = mat
+  c.r.copy(r); c.p.copy(P); c.n.copy(n); c.d = d; c.mat = mat; c.shape = shape
   if (mat.solid && d > found.deepest) { found.deepest = d; found.deepN = c.n }
 }
 
@@ -128,7 +138,7 @@ export class Flight {
     this.omega.set(0, 0, 0)
     this.in.pitch = this.in.turn = this.in.roll = 0
     this.throttle = 0; this.held = 0; this.push = 0
-    this.barrel = 0; this.trim = 0
+    this.barrel = 0; this.trim = 0; this.dizzy = 0
     this.aware = 1; this.oblivious = 0; this.hanging = false; this.stillLatch = false
     this.daze = 0; this.splat = null; this.hitCool = 0
     this.airTime = 1; this.touching = null; this.liftForce = 0
@@ -139,6 +149,8 @@ export class Flight {
   }
 
   get airborne() { return this.airTime > 0.3 }
+  // law 10
+  get shielding() { return !this.splat && Math.abs(this.omega.z) > TOON.shieldSpin }
   get boosting() { return this.throttle > 0 && this.daze <= 0 }
 
   forward(out = new THREE.Vector3()) { return out.copy(FORWARD).applyQuaternion(this.quat) }
@@ -157,8 +169,29 @@ export class Flight {
   // a quick full roll; the physics doesn't care, the pilot does it with the stick
   barrelRoll(dir) {
     if (this.barrel || this.daze > 0 || this.splat) return
+    if (this.dizzy > 1 - TOON.dizzyPerRoll * 0.5) {
+      // one roll too many
+      this.dizzy = 0
+      this.daze = TOON.dizzyTime
+      this.omega.z += dir * 4
+      this.emit('dizzy')
+      return
+    }
+    this.dizzy += TOON.dizzyPerRoll
     this.barrel = dir * Math.PI * 2
     this.emit('barrel', { dir })
+  }
+
+  // something (a missile, say) shoves the plane and sets it spinning
+  knock(push, spin = 0, daze = 0) {
+    this.vel.add(push)
+    if (this.splat) return
+    this.omega.x += (Math.random() - 0.5) * spin
+    this.omega.y += (Math.random() - 0.5) * spin * 0.5
+    this.omega.z += (Math.random() - 0.5) * spin * 1.5
+    if (daze > this.daze) { this.daze = daze; this.barrel = 0 }
+    this.jiggle.axis.copy(push).normalize()
+    this.jiggle.v = -Math.min(push.length(), 200) * 0.04
   }
 
   // law 5: a dead stop in midair. Nothing happens for a moment.
@@ -202,10 +235,13 @@ export class Flight {
     if (this.hitCool > 0) this.hitCool -= h
     if (this.splat) {
       this.splat.t -= h
+      // splatted on something that flies: along for the ride
+      if (this.splat.on) this.pos.addScaledVector(this.splat.on.vel, h)
       if (this.splat.t > 0) return
       this.unsplat()
     }
     if (this.daze > 0) this.daze = Math.max(0, this.daze - h)
+    if (this.dizzy > 0) this.dizzy = Math.max(0, this.dizzy - TOON.dizzyFade * h)
 
     // law 5: awareness
     if (this.oblivious > 0) {
@@ -414,7 +450,7 @@ export class Flight {
         const s = this.near[i]
         if (s.mat.idle && !idle) continue
         const d = -s.sdf(P, _n)
-        if (d > 0) addContact(r, P, d, _n, s.mat)
+        if (d > 0) addContact(r, P, d, _n, s.mat, s)
       }
     }
     const nc = found.n
@@ -431,7 +467,7 @@ export class Flight {
     const acc = _acc.set(0, 0, 0), torque = _tq.set(0, 0, 0)
     for (let i = 0; i < nc; i++) {
       const c = contacts[i]
-      const vp = _vp.crossVectors(_ww, c.r).add(this.vel)
+      const vp = _vp.crossVectors(_ww, c.r).add(this.vel).sub(c.shape && c.shape.vel || STILL)
       const vn = vp.dot(c.n)
       const S = c.mat
       const fn = Math.max(0, S.k * c.d - S.c * vn)
@@ -459,12 +495,13 @@ export class Flight {
       pos.y = floor
       if (this.vel.y < 0) this.vel.y = 0
     }
-    const n = world.near ? world.near(pos, 4, this.near) : 0
+    const n = world.near ? world.near(pos, 8, this.near) : 0
     for (let i = 0; i < n; i++) {
       const s = this.near[i]
-      if (s.mat.solid && !s.holed && s.sdf(pos, _n) < 0) {
+      // things that fly are hit by the whole plane, not just its middle
+      if (s.mat.solid && !s.holed && s.sdf(pos, _n) < (s.vel ? 4 : 0)) {
         s.holed = true
-        this.emit('perforate', { pos: pos.clone(), surface: s.mat.name })
+        this.emit('perforate', { pos: pos.clone(), surface: s.mat.name, shape: s })
       }
     }
     if (pos.y > LID_Y - 6) { pos.y = LID_Y - 6; if (this.vel.y > 0) this.vel.y = 0 }
@@ -477,12 +514,15 @@ export class Flight {
     for (let i = 0; i < nc; i++) {
       const c = contacts[i]
       if (!c.mat.solid) continue
-      const vn = _vp.crossVectors(_ww, c.r).add(this.vel).dot(c.n)
+      const vn = _vp.crossVectors(_ww, c.r).add(this.vel).sub(c.shape && c.shape.vel || STILL).dot(c.n)
       if (vn < wvn) { wvn = vn; worst = c }
     }
     if (!worst || this.hitCool > 0) return
     const speed = -wvn, n = worst.n, mat = worst.mat
     if (speed > T.splat) return this.doSplat(worst, speed)
+    // a moving thing: work it out in its frame
+    const sv = worst.shape && worst.shape.vel
+    if (sv) this.vel.sub(sv)
 
     const vnCom = this.vel.dot(n)
     const J = _J.set(0, 0, 0)
@@ -516,18 +556,19 @@ export class Flight {
       _axis.normalize().applyQuaternion(_qi.copy(this.quat).invert())
       this.omega.addScaledVector(_axis, ang * T.rebound * Math.min(1, (into - 0.3) * 2))
     }
+    if (sv) this.vel.add(sv)
     const daze = clamp((speed - T.dazeFrom) * T.dazePerHit, 0, 1) * T.dazeMax * (mat.bounce > 1 ? 0.3 : 1)
     if (daze > this.daze) this.daze = daze
     if (daze > 0) this.barrel = 0
     this.hitCool = 0.08
     this.jiggle.axis.copy(n)
     this.jiggle.v = -Math.min(speed, 260) * 0.03
-    this.emit('bounce', { pos: worst.p.clone(), n: n.clone(), speed, surface: mat.name, daze })
+    this.emit('bounce', { pos: worst.p.clone(), n: n.clone(), speed, surface: mat.name, daze, shape: worst.shape })
   }
 
   doSplat(c, speed) {
     const T = TOON
-    this.splat = { t: T.splatTime, n: c.n.clone(), speed, surface: c.mat.name }
+    this.splat = { t: T.splatTime, n: c.n.clone(), speed, surface: c.mat.name, on: c.shape && c.shape.vel ? c.shape : null }
     this.pos.addScaledVector(c.n, c.d)
     this.vel.set(0, 0, 0)
     this.omega.set(0, 0, 0)
@@ -536,13 +577,14 @@ export class Flight {
     this.held = 0
     this.jiggle.axis.copy(c.n)
     this.jiggle.x = -0.6; this.jiggle.v = 0
-    this.emit('splat', { pos: c.p.clone(), n: c.n.clone(), speed, surface: c.mat.name })
+    this.emit('splat', { pos: c.p.clone(), n: c.n.clone(), speed, surface: c.mat.name, shape: c.shape })
   }
 
   unsplat() {
     const T = TOON, s = this.splat
     this.splat = null
     this.vel.copy(s.n).multiplyScalar(Math.min(0.62 * s.speed, T.unsplat))
+    if (s.on) this.vel.add(s.on.vel)
     this.omega.set((Math.random() - 0.5) * 9, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 9)
     this.jiggle.v = 6
     this.hitCool = 0.3

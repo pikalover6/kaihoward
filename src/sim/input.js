@@ -1,7 +1,9 @@
 // Keyboard, gamepad and touch -> a handful of control axes.
 //   pitch  ↑↓ / W S / left stick       turn  ←→ / A D / left stick
-//   roll   Q E / bumpers               throttle  space / A / RT boost, shift / B / LT brake
-// Double-tap ← or → (or press X on a pad) for a barrel roll.
+//   roll   Q E / bumpers               throttle  space / RT boost, shift / LT brake
+//   fire   F J Z X / enter / click / A (and the guns go off by themselves when something's lined up)
+// Double-tap ← or → (or press B on a pad) for a barrel roll.
+const FIRE_KEYS = ['f', 'j', 'z', 'x', 'enter']
 const DEAD = 0.18
 const dz = v => (Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) / (1 - DEAD))
 
@@ -15,6 +17,8 @@ export class Input {
     this.listeners = {}
     this.wheel = 0
     this.virtualThrottle = 0 // held on-screen buttons (touch)
+    this.virtualFire = false
+    this.mouseFire = false
     this.lastTap = { key: '', t: 0 }
     this.padPrev = []
     this.usingPad = false
@@ -33,7 +37,7 @@ export class Input {
       }
       this.keys.add(k)
       this.usingPad = false
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault()
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'enter'].includes(k)) e.preventDefault()
     }
     this._onKeyUp = e => this.keys.delete(e.key.toLowerCase())
     this._onBlur = () => this.keys.clear()
@@ -44,6 +48,7 @@ export class Input {
     this._onPointerDown = e => {
       if (e.target !== this.el) return
       this.pointer.down = true
+      if (e.pointerType === 'mouse' && e.button === 0) this.mouseFire = true
       this.pointer.x = e.clientX; this.pointer.y = e.clientY
       if (e.pointerType === 'touch' && !this.touch.active) {
         this.touch.active = true
@@ -61,6 +66,7 @@ export class Input {
     }
     this._onPointerUp = e => {
       this.pointer.down = false
+      if (e.pointerType === 'mouse') this.mouseFire = false
       if (e.pointerId === this.touch.id) { this.touch.active = false; this.touch.id = null }
     }
     this._onWheel = e => { this.wheel += e.deltaY }
@@ -87,6 +93,7 @@ export class Input {
     if (k.has(' ')) throttle += 1
     if (k.has('shift')) throttle -= 1
     throttle += this.virtualThrottle
+    let fire = this.mouseFire || this.virtualFire || FIRE_KEYS.some(f => k.has(f))
     if (this.touch.active) {
       turn += Math.max(-1, Math.min(1, (this.touch.x - this.touch.sx) / 80))
       pitch += Math.max(-1, Math.min(1, -(this.touch.y - this.touch.sy) / 80))
@@ -102,8 +109,9 @@ export class Input {
       turn += sx
       pitch -= sy
       roll += b(5) - b(4)
-      throttle += Math.max(b(0), b(7)) - Math.max(b(1), b(6))
-      if (pressed(2)) this.emit('barrel', sx < -0.3 ? -1 : 1)
+      throttle += b(7) - b(6)
+      if (b(0) > 0.5 || b(2) > 0.5) fire = true
+      if (pressed(1)) this.emit('barrel', sx < -0.3 ? -1 : 1)
       if (pressed(3)) this.emit('press', 'v')
       if (pressed(9)) this.emit('press', 'escape')
       if (pressed(8)) this.emit('press', 'r')
@@ -111,7 +119,7 @@ export class Input {
       break
     }
     const clamp = v => Math.max(-1, Math.min(1, v))
-    const out = { pitch: clamp(pitch), turn: clamp(turn), roll: clamp(roll), throttle: clamp(throttle), pdx: this.pointer.dx, pdy: this.pointer.dy, wheel: this.wheel }
+    const out = { pitch: clamp(pitch), turn: clamp(turn), roll: clamp(roll), throttle: clamp(throttle), fire, pdx: this.pointer.dx, pdy: this.pointer.dy, wheel: this.wheel }
     this.pointer.dx = 0; this.pointer.dy = 0; this.wheel = 0
     return out
   }

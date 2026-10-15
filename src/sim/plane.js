@@ -27,15 +27,17 @@ export function buildPlane() {
   const body = new THREE.Group()
   root.add(body)
 
+  // a glossy toy: painted plastic with a highlight on every curve
+  const gloss = { spec: 0.45, shine: 14, rim: 0.12 }
   const M = {
-    red: n64Material({ color: '#e8382f' }),
-    yellow: n64Material({ color: '#ffd23a' }),
-    blue: n64Material({ color: '#2f8fe8' }),
-    white: n64Material({ color: '#ffffff' }),
+    red: n64Material({ color: '#e8382f', ...gloss }),
+    yellow: n64Material({ color: '#ffd23a', ...gloss }),
+    blue: n64Material({ color: '#2f8fe8', ...gloss }),
+    white: n64Material({ color: '#ffffff', ...gloss }),
     dark: n64Material({ color: '#2a2e3a' }),
     skin: n64Material({ color: '#f6c9a0' }),
     leather: n64Material({ color: '#8a5530' }),
-    glass: n64Material({ color: '#bfe8ff', emissive: 0.3 }),
+    glass: n64Material({ color: '#bfe8ff', emissive: 0.3, spec: 1.2, shine: 24, rim: 0.4 }),
     flame: n64Material({ color: '#ffe066', emissive: 1 }),
     flame2: n64Material({ color: '#ff7a1a', emissive: 1 }),
   }

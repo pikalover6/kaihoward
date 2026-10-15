@@ -33,9 +33,9 @@ float n64Fog(float depth){ return clamp((depth - uFogNear) / (uFogFar - uFogNear
 const vert = /* glsl */ `
 ${LIGHTING_GLSL}
 uniform vec3 uTint;
-uniform float uEmissive;
+uniform float uEmissive, uSpec, uShine, uRim;
 uniform vec2 uUvScale, uUvScroll;
-varying vec3 vLight, vCol;
+varying vec3 vLight, vCol, vSpec;
 varying vec2 vUv;
 varying float vFog;
 void main(){
@@ -46,6 +46,10 @@ void main(){
   vec4 wp = m * vec4(position, 1.0);
   vec3 n = normalize(mat3(m) * normal);
   vLight = mix(n64Light(n), vec3(1.0), uEmissive);
+  // a per-vertex highlight and a glassy rim, for the shiny things
+  vec3 V = normalize(cameraPosition - wp.xyz);
+  float nv = max(dot(n, V), 0.0);
+  vSpec = vec3(uSpec * pow(max(dot(n, normalize(uSunDir + V)), 0.0), uShine) + uRim * pow(1.0 - nv, 2.0));
   vCol = uTint;
   #ifdef USE_COLOR
   vCol *= color;
@@ -63,13 +67,14 @@ const frag = /* glsl */ `
 uniform vec3 uFogColor;
 uniform sampler2D map;
 uniform float uHasMap, uAlpha, uFogAmount;
-varying vec3 vLight, vCol;
+uniform vec3 uFlash;
+varying vec3 vLight, vCol, vSpec;
 varying vec2 vUv;
 varying float vFog;
 void main(){
   vec4 tex = uHasMap > 0.5 ? texture2D(map, vUv) : vec4(1.0);
   if (tex.a < 0.5) discard;
-  vec3 c = vCol * tex.rgb * vLight;
+  vec3 c = vCol * tex.rgb * vLight + vSpec + uFlash;
   c = mix(c, uFogColor, vFog * uFogAmount);
   gl_FragColor = vec4(c, uAlpha);
 }
@@ -79,6 +84,7 @@ void main(){
 export function n64Material({
   map = null, color = '#ffffff', vertexColors = false, emissive = 0, side = THREE.FrontSide,
   uvScale = [1, 1], uvScroll = [0, 0], alpha = 1, fog = 1, depthWrite = true,
+  spec = 0, shine = 16, rim = 0, blending = THREE.NormalBlending, polygonOffset = 0,
 } = {}) {
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -91,13 +97,21 @@ export function n64Material({
       uUvScroll: { value: new THREE.Vector2(...uvScroll) },
       uAlpha: { value: alpha },
       uFogAmount: { value: fog },
+      uSpec: { value: spec },
+      uShine: { value: shine },
+      uRim: { value: rim },
+      uFlash: { value: new THREE.Color(0, 0, 0) }, // added on top: hit flashes
     },
     vertexShader: vert,
     fragmentShader: frag,
     vertexColors,
     side,
-    transparent: alpha < 1,
+    transparent: alpha < 1 || blending !== THREE.NormalBlending,
     depthWrite,
+    blending,
+    polygonOffset: !!polygonOffset,
+    polygonOffsetFactor: -polygonOffset,
+    polygonOffsetUnits: -polygonOffset,
   })
 }
 
@@ -145,10 +159,10 @@ export function textures() {
   if (cache) return cache
   const T = {}
   T.grass = canvasTex(32, (c, s) => {
-    speckle(c, s, '#59b33a', ['#4a9c2f', '#6ec447', '#3f8a28', '#7fd155'], 11, 0.5)
+    speckle(c, s, '#5fc53a', ['#52b331', '#74d74b', '#47a12c', '#88e35c'], 11, 0.5)
     // little tufts
     const rnd = mulberry32(5)
-    c.fillStyle = '#86dc5c'
+    c.fillStyle = '#a2f070'
     for (let i = 0; i < 14; i++) { const x = Math.floor(rnd() * s), y = Math.floor(rnd() * s); c.fillRect(x, y, 1, 2) }
   })
   T.sand = canvasTex(32, (c, s) => speckle(c, s, '#ecd99a', ['#dcc684', '#f5e6b0', '#cfb877'], 12, 0.4))
@@ -161,8 +175,8 @@ export function textures() {
   T.snow = canvasTex(32, (c, s) => speckle(c, s, '#f4f8ff', ['#dde8f7', '#ffffff', '#cfdcf0'], 14, 0.35))
   T.dirt = canvasTex(32, (c, s) => speckle(c, s, '#a07448', ['#8a613a', '#b5865a', '#7a5332'], 15, 0.5))
   T.water = canvasTex(64, (c, s) => {
-    speckle(c, s, '#2f7fd8', ['#2a72c4', '#3a8ae0', '#2d78cf'], 16, 0.5)
-    c.strokeStyle = '#8cc8ff'; c.lineWidth = 1
+    speckle(c, s, '#1f9ae0', ['#1a8bd0', '#33aeee', '#2496da'], 16, 0.5)
+    c.strokeStyle = '#a6ecff'; c.lineWidth = 1
     const rnd = mulberry32(8)
     for (let i = 0; i < 14; i++) {
       const x = Math.floor(rnd() * s), y = Math.floor(rnd() * s), w = 4 + Math.floor(rnd() * 8)
@@ -209,6 +223,66 @@ export function textures() {
   T.fabric = canvasTex(32, (c, s) => {
     const cols = ['#ff5a5a', '#ffd23a', '#3fa9ff', '#ffffff']
     for (let i = 0; i < 8; i++) { c.fillStyle = cols[i % cols.length]; c.fillRect(i * s / 8, 0, s / 8, s) }
+  })
+  // aircraft skin: panel lines, fasteners, a bit of grime
+  const skin = (base, spots, line, seed) => canvasTex(64, (c, s) => {
+    speckle(c, s, base, spots, seed, 0.25)
+    const rnd = mulberry32(seed + 1)
+    c.fillStyle = line
+    for (let i = 0; i < 6; i++) { const y = Math.floor(rnd() * s); c.fillRect(0, y, s, 1) }
+    for (let i = 0; i < 9; i++) { const x = Math.floor(rnd() * s), y = Math.floor(rnd() * s), h = 6 + Math.floor(rnd() * 20); c.fillRect(x, y, 1, h) }
+    for (let i = 0; i < 4; i++) { const x = Math.floor(rnd() * (s - 12)), y = Math.floor(rnd() * (s - 10)), w = 6 + Math.floor(rnd() * 8), h = 5 + Math.floor(rnd() * 6); c.strokeStyle = line; c.strokeRect(x + 0.5, y + 0.5, w, h) }
+    c.fillStyle = line
+    for (let i = 0; i < 30; i++) c.fillRect(Math.floor(rnd() * s), Math.floor(rnd() * s), 1, 1)
+  })
+  T.skin = skin('#c4c8cc', ['#bcc0c4', '#ccd0d4', '#b4b8bd'], '#8f959c', 31)
+  T.stealth = skin('#b9bcc0', ['#b0b3b8', '#c2c5c9'], '#9a9ea4', 37)
+  // decals: a low-visibility roundel (an apple, naturally) and some stencilling
+  T.decal = canvasTex(64, (c, s) => {
+    c.clearRect(0, 0, s, s)
+    c.fillStyle = '#4b5158'
+    c.beginPath(); c.arc(16, 16, 14, 0, Math.PI * 2); c.fill()
+    c.fillStyle = '#9aa1a8'
+    c.beginPath(); c.arc(16, 16, 11, 0, Math.PI * 2); c.fill()
+    c.fillStyle = '#4b5158'
+    c.beginPath(); c.arc(13, 18, 5.5, 0, Math.PI * 2); c.arc(19, 18, 5.5, 0, Math.PI * 2); c.fill()
+    c.fillRect(15.5, 8, 1.5, 5)
+    c.beginPath(); c.ellipse(19.5, 9.5, 3, 1.5, -0.5, 0, Math.PI * 2); c.fill()
+    c.font = 'bold 13px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'
+    c.fillText('NAF', 48, 10)
+    c.font = 'bold 15px sans-serif'
+    c.fillText('2nd', 48, 25)
+    c.fillStyle = '#d8b030'
+    c.fillRect(34, 40, 28, 4)
+    c.fillStyle = '#4b5158'
+    c.font = 'bold 9px sans-serif'
+    c.fillText('NO STEP', 16, 50); c.fillText('F=ma', 48, 54)
+  }, { repeat: false, alpha: true })
+  T.decal.magFilter = THREE.NearestFilter
+  // power-up icons, drawn big and bold so they read inside a bubble
+  const icon = draw => { const t = canvasTex(64, (c, s) => { c.clearRect(0, 0, s, s); draw(c, s) }, { repeat: false, alpha: true }); t.minFilter = THREE.LinearFilter; return t }
+  T.iconHeart = icon(c => {
+    c.fillStyle = '#ff3d7f'
+    c.beginPath(); c.moveTo(32, 54); c.bezierCurveTo(4, 34, 8, 8, 32, 20); c.bezierCurveTo(56, 8, 60, 34, 32, 54); c.fill()
+    c.fillStyle = '#ffd0e2'; c.beginPath(); c.ellipse(21, 24, 6, 4, -0.6, 0, Math.PI * 2); c.fill()
+  })
+  T.iconTriple = icon(c => {
+    c.fillStyle = '#21d4ff'
+    for (const [x, y] of [[32, 14], [16, 38], [48, 38]]) { c.beginPath(); c.arc(x, y, 10, 0, Math.PI * 2); c.fill() }
+    c.fillStyle = '#e8fbff'
+    for (const [x, y] of [[29, 11], [13, 35], [45, 35]]) { c.beginPath(); c.arc(x, y, 3.5, 0, Math.PI * 2); c.fill() }
+  })
+  T.iconDuck = icon(c => {
+    c.fillStyle = '#ffd21f'
+    c.beginPath(); c.ellipse(30, 40, 20, 13, 0, 0, Math.PI * 2); c.fill()
+    c.beginPath(); c.arc(40, 22, 11, 0, Math.PI * 2); c.fill()
+    c.fillStyle = '#ff8a1f'; c.beginPath(); c.moveTo(49, 20); c.lineTo(60, 25); c.lineTo(49, 28); c.fill()
+    c.fillStyle = '#222'; c.beginPath(); c.arc(43, 19, 2.5, 0, Math.PI * 2); c.fill()
+  })
+  T.iconBubble = icon(c => {
+    c.strokeStyle = '#7fe3ff'; c.lineWidth = 6
+    c.beginPath(); c.arc(32, 32, 22, 0, Math.PI * 2); c.stroke()
+    c.fillStyle = '#ffffff'; c.beginPath(); c.ellipse(24, 22, 7, 4, -0.7, 0, Math.PI * 2); c.fill()
   })
   cache = T
   return T
