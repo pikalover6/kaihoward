@@ -202,6 +202,12 @@ export class Terrain {
 
   shift(dx, dz) {
     this.origin.x += dx; this.origin.z += dz
+    // after a trip at a zillion mph, deal a fresh patch of world rather than let float precision eat this one
+    if (Math.abs(this.origin.x) > 1e6 || Math.abs(this.origin.z) > 1e6) {
+      this.origin.x %= 50000; this.origin.z %= 50000
+      for (const c of this.chunks.values()) this.disposeChunk(c)
+      this.chunks.clear()
+    }
     this.uniforms.uWorldOffset.value.set(this.origin.x, this.origin.z)
     for (const c of this.chunks.values()) { c.position.x -= dx; c.position.z -= dz }
   }

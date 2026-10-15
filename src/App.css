@@ -60,7 +60,7 @@
 .center {
   position: absolute;
   left: 50%;
-  bottom: 22px;
+  bottom: 96px;
   transform: translateX(-50%);
   font-size: 13px;
   font-weight: 700;
@@ -86,12 +86,22 @@
 
 .touch {
   position: absolute;
-  right: 16px;
   bottom: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+.touch.right { right: 16px; }
+.touch.left { left: 16px; }
+.touch .drag {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(20, 60, 110, 0.35);
+  text-align: center;
+  pointer-events: none;
+}
+.touch button.lit { background: rgba(255, 107, 107, 0.55); border-color: rgba(255, 220, 220, 0.9); }
 .touch button {
   width: 64px;
   height: 40px;
@@ -185,3 +195,99 @@
 }
 .card nav a:hover { background: rgba(255, 255, 255, 0.6); transform: translateY(-1px); }
 .card nav small { font-weight: 600; opacity: 0.6; font-size: 12px; }
+
+/* speedometer: honest up to 300 mph, then the needle gives up and spins */
+.speedo {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 2px rgba(20, 60, 110, 0.35), 0 0 12px rgba(120, 190, 255, 0.35);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.speedo .gauge {
+  width: 54px;
+  height: 54px;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgba(20, 60, 110, 0.4));
+}
+.speedo .arc { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 2; stroke-linecap: round; }
+.speedo .tick { stroke: rgba(255, 255, 255, 0.8); stroke-width: 1.6; stroke-linecap: round; }
+.speedo .tick.red { stroke: #ff8a8a; }
+.speedo .needle { stroke: #ff6b6b; stroke-width: 2.4; stroke-linecap: round; }
+.speedo .hub { fill: #fff; }
+.speedo .readout { display: flex; flex-direction: column; line-height: 1.15; min-width: 128px; }
+.speedo .speed { font-size: 15px; font-weight: 700; }
+.speedo .speed b { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.speedo small { font-size: 12px; font-weight: 700; opacity: 0.85; }
+.speedo small.dial { opacity: 0.6; }
+.speedo small.dial:empty { display: none; }
+.speedo.off small:first-of-type { color: #ffd0d0; }
+.speedo.wild .gauge { animation: rattle 0.09s linear infinite; }
+@keyframes rattle {
+  0% { transform: translate(0.6px, -0.4px) rotate(-1deg); }
+  50% { transform: translate(-0.6px, 0.5px) rotate(1deg); }
+  100% { transform: translate(0.6px, -0.4px) rotate(-1deg); }
+}
+
+/* named speeds */
+.tier {
+  position: absolute;
+  left: 50%;
+  top: 16%;
+  transform: translateX(-50%);
+  font-size: clamp(22px, 4.2vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(255, 107, 107, 0.9), 0 3px 10px rgba(20, 60, 110, 0.35);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: tier 2.4s cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+}
+@keyframes tier {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.4); }
+  12% { opacity: 1; transform: translateX(-50%) scale(1.08); }
+  20% { transform: translateX(-50%) scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) scale(1) translateY(-10px); }
+}
+
+/* comic-book noises */
+.pop {
+  position: absolute;
+  transform: translate(-50%, -50%) rotate(var(--tilt));
+  font-size: 30px;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: -0.01em;
+  color: #ffd84a;
+  -webkit-text-stroke: 1.5px #7a3b12;
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 #7a3b12, 0 6px 14px rgba(20, 40, 80, 0.3);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: pop 1.25s cubic-bezier(0.2, 1.6, 0.4, 1) forwards;
+}
+.pop.big { font-size: 46px; color: #ff6b6b; -webkit-text-stroke-color: #5c1616; text-shadow: 0 4px 0 #5c1616, 0 8px 18px rgba(20, 40, 80, 0.3); }
+.pop.small { font-size: 20px; color: #fff; -webkit-text-stroke-color: #2b3446; text-shadow: 0 2px 0 #2b3446; }
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--tilt)) scale(0.2); }
+  15% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--tilt)) scale(1.15); }
+  28% { transform: translate(-50%, -50%) rotate(var(--tilt)) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -90%) rotate(var(--tilt)) scale(1); }
+}
+
+@media (max-width: 520px) {
+  .speedo { bottom: 12px; gap: 5px; }
+  .speedo .gauge { width: 42px; height: 42px; }
+  .speedo .readout { min-width: 0; }
+  .speedo .speed b { font-size: 17px; }
+  .speedo small { font-size: 11px; }
+}

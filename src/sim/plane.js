@@ -199,17 +199,80 @@ export function buildPlane(fogUniforms) {
   body.add(screen)
   const pilot = new THREE.Group()
   pilot.position.set(0, 0.95, 0.35)
+  // the head turns on its own (to look at you, or down) and has eyes so you can tell
+  const headGroup = new THREE.Group()
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 16), M.skin)
   const cap = new THREE.Mesh(new THREE.SphereGeometry(0.255, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.55), M.leather)
   cap.position.y = 0.02
   const goggles = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.045, 10, 30), M.dark)
   goggles.rotation.x = Math.PI / 2
   goggles.position.y = 0.11
+  headGroup.add(head, cap, goggles)
+  const eyes = []
+  for (const sign of [1, -1]) {
+    const eye = new THREE.Group()
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 10), M.white)
+    white.scale.set(1, 1.25, 0.6)
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.036, 10, 8), M.dark)
+    pupil.position.z = -0.04
+    eye.add(white, pupil)
+    eye.position.set(sign * 0.085, 0.05, -0.2)
+    eye.userData.pupil = pupil
+    headGroup.add(eye)
+    eyes.push(eye)
+  }
   const torso = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), M.leather)
   torso.scale.set(1.1, 0.9, 0.8)
   torso.position.y = -0.35
-  pilot.add(head, cap, goggles, torso)
+  pilot.add(headGroup, torso)
   body.add(pilot)
+
+  // the sign the pilot holds up when things stop making sense
+  const signCanvas = document.createElement('canvas')
+  signCanvas.width = 256; signCanvas.height = 128
+  const signTex = new THREE.CanvasTexture(signCanvas)
+  signTex.colorSpace = THREE.SRGBColorSpace
+  signTex.anisotropy = 4
+  const sign = new THREE.Group()
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.0, 6), M.leather)
+  stick.position.y = 0.5
+  const board = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 0.04), new THREE.MeshStandardMaterial({ color: '#c99a63', roughness: 0.8 }))
+  board.position.y = 1.15
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.5), new THREE.MeshBasicMaterial({ map: signTex, toneMapped: false }))
+  face.position.set(0, 1.15, 0.025)
+  const back = face.clone()
+  back.rotation.y = Math.PI
+  back.position.z = -0.025
+  sign.add(stick, board, face, back)
+  sign.position.set(0.32, -0.3, 0)
+  sign.scale.setScalar(1.5)
+  sign.visible = false
+  pilot.add(sign)
+  const writeSign = text => {
+    const c = signCanvas.getContext('2d')
+    c.fillStyle = '#f3dfb8'; c.fillRect(0, 0, 256, 128)
+    c.strokeStyle = '#8a5a33'; c.lineWidth = 6; c.strokeRect(6, 6, 244, 116)
+    c.fillStyle = '#3a2416'
+    c.textAlign = 'center'; c.textBaseline = 'middle'
+    let size = 54
+    do { c.font = `800 ${size}px Nunito, system-ui, sans-serif`; size -= 2 } while (c.measureText(text).width > 220 && size > 18)
+    c.fillText(text, 128, 68)
+    signTex.needsUpdate = true
+  }
+
+  // dizzy stars
+  const stars = new THREE.Group()
+  const starShape = new THREE.Shape()
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + Math.PI / 2, r = i % 2 ? 0.05 : 0.12
+    if (i === 0) starShape.moveTo(Math.cos(a) * r, Math.sin(a) * r); else starShape.lineTo(Math.cos(a) * r, Math.sin(a) * r)
+  }
+  const starGeo = new THREE.ExtrudeGeometry(starShape, { depth: 0.03, bevelEnabled: false })
+  const starMat = new THREE.MeshBasicMaterial({ color: '#ffd84a', toneMapped: false })
+  for (let i = 0; i < 5; i++) stars.add(new THREE.Mesh(starGeo, starMat))
+  stars.position.y = 0.42
+  stars.visible = false
+  pilot.add(stars)
 
   // landing gear with wheel pants
   for (const sign of [1, -1]) {
@@ -246,5 +309,5 @@ export function buildPlane(fogUniforms) {
   const scarf = new Ribbon(16, 0.15, '#e63946', 1.0, fogUniforms)
   scarf.mesh.renderOrder = 15
 
-  return { root, body, prop, blur, pilot, trailL, trailR, scarf, materials: M }
+  return { root, body, prop, blur, pilot, headGroup, eyes, sign, writeSign, stars, trailL, trailR, scarf, materials: M }
 }

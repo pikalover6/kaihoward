@@ -14,12 +14,24 @@ void main(){
 const frag = /* glsl */ `
 precision highp float;
 uniform vec3 uSunDir, uMoonDir, uFogColor;
-uniform float uTime, uAlt, uBelow, uEnv, uCeil, uFogDensity;
+uniform float uTime, uAlt, uBelow, uEnv, uCeil, uFogDensity, uPlaid;
+uniform vec4 uRipple;
 uniform vec4 uShoot[3];
 uniform vec3 uShootTan[3];
 varying vec3 vDir;
 ${GLSL_NOISE}
 ${GLSL_SRGB}
+
+// one thread of a tartan: red ground, green and navy bands, yellow and white pinstripes
+vec3 sett(float x){
+  x = fract(x);
+  vec3 c = S(0.66, 0.07, 0.09);
+  c = mix(c, S(0.04, 0.24, 0.12), step(0.10, x) * step(x, 0.40));
+  c = mix(c, S(0.04, 0.07, 0.30), step(0.55, x) * step(x, 0.74));
+  c = mix(c, S(0.98, 0.82, 0.25), step(0.465, x) * step(x, 0.49));
+  c = mix(c, vec3(0.92), step(0.86, x) * step(x, 0.875));
+  return c;
+}
 
 void main(){
   vec3 d = normalize(vDir);
@@ -103,6 +115,26 @@ void main(){
     col += vec3(0.9, 0.95, 1.0) * along * across * fade * 1.6;
   }
 
+  // the sky has a lid; bonking it sends rings across it
+  float rt = uTime - uRipple.w;
+  if (rt > 0.0 && rt < 3.5) {
+    float ang = acos(clamp(dot(d, uRipple.xyz), -1.0, 1.0));
+    float ring = 0.0;
+    for (int k = 0; k < 4; k++) {
+      float r0 = rt * 1.25 - float(k) * 0.2;
+      ring += exp(-pow((ang - r0) * 16.0, 2.0)) * step(0.0, r0);
+    }
+    col += S(0.9, 0.97, 1.0) * ring * 0.8 * (1.0 - rt / 3.5);
+  }
+
+  // what the sky does past ludicrous speed
+  if (uPlaid > 0.0) {
+    vec2 pp = vec2(atan(d.z, d.x) * 2.0, asin(clamp(y, -1.0, 1.0)) * 4.0);
+    vec3 tartan = (sett(pp.x) + sett(pp.y)) * 0.5;
+    tartan *= 0.9 + 0.1 * step(0.5, fract((gl_FragCoord.x + gl_FragCoord.y) * 0.25));
+    col = mix(col, tartan, uPlaid * 0.9);
+  }
+
   // under the cloud sea: hazy, and the sky fades into the fog the same way the cloud ceiling does
   vec3 dim = mix(col, uFogColor * 0.92, 0.7);
   float ceilD = uCeil / max(y, 0.02);
@@ -155,6 +187,8 @@ export class Sky {
       uEnv: { value: 0 },
       uCeil: { value: 0 },
       uFogDensity: { value: 0.0001 },
+      uPlaid: { value: 0 },
+      uRipple: { value: new THREE.Vector4(0, 1, 0, -100) },
       uShoot: { value: [new THREE.Vector4(0, 1, 0, -100), new THREE.Vector4(0, 1, 0, -100), new THREE.Vector4(0, 1, 0, -100)] },
       uShootTan: { value: [new THREE.Vector3(1, 0, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(1, 0, 0)] },
     }

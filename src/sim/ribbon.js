@@ -66,6 +66,7 @@ export class Ribbon {
     this.mesh.frustumCulled = false
     this.mesh.renderOrder = 20
     this.last = new THREE.Vector3(1e9, 1e9, 1e9)
+    this.maxGap = 40
   }
 
   clear() { this.filled = 0; this.alphas.fill(0); this.alp.array.fill(0); this.alp.needsUpdate = true }
@@ -78,7 +79,7 @@ export class Ribbon {
   // push a new sample at the head (index 0) and rebuild
   push(center, side, alpha, minSpacing = 0.25) {
     const n = this.n
-    if (this.filled > 0 && center.distanceToSquared(this.last) > 40 * 40) this.clear() // teleported
+    if (this.filled > 0 && center.distanceToSquared(this.last) > this.maxGap * this.maxGap) this.clear() // teleported, or just too fast to draw
     if (center.distanceToSquared(this.last) < minSpacing * minSpacing && this.filled > 0) {
       // update the head only
       this.centers[0] = center.x; this.centers[1] = center.y; this.centers[2] = center.z

@@ -10,6 +10,7 @@ export class Input {
     this.listeners = {}
     this.anyKey = false
     this.wheel = 0
+    this.virtualThrottle = 0 // held on-screen buttons (touch)
     this._onKeyDown = e => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return
       const k = e.key.toLowerCase()
@@ -71,6 +72,7 @@ export class Input {
     if (k.has('e')) yaw += 1
     if (k.has('shift')) throttle += 1
     if (k.has('control')) throttle -= 1
+    throttle += this.virtualThrottle
     if (this.touch.active) {
       const dx = (this.touch.x - this.touch.sx) / 90, dy = (this.touch.y - this.touch.sy) / 90
       roll += Math.max(-1, Math.min(1, dx))

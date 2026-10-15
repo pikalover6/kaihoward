@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { mulberry32, GLSL_SRGB } from './noise.js'
-import { CLOUD_Y, SUN_DIR, UP } from './constants.js'
+import { CLOUD_Y, SUN_DIR, UP, wrapR } from './constants.js'
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion()
 const _dir = new THREE.Vector3(), _right = new THREE.Vector3(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1.5, 1.5, 1.5)
@@ -272,9 +272,10 @@ export class Life {
     this.sparks.geometry.attributes.position.needsUpdate = true
   }
 
+  // keep v within R of center on x/z (modulo, so it copes with a plane that moved a zillion units)
   wrap(v, center, R) {
-    if (v.x - center.x > R) v.x -= 2 * R; else if (v.x - center.x < -R) v.x += 2 * R
-    if (v.z - center.z > R) v.z -= 2 * R; else if (v.z - center.z < -R) v.z += 2 * R
+    v.x = center.x + wrapR(v.x - center.x, R)
+    v.z = center.z + wrapR(v.z - center.z, R)
   }
 
   update(dt, t, flight, camera, audio) {
@@ -324,7 +325,8 @@ export class Life {
       this.bubblesInit = true
       for (const b of this.bub) b.p.set(anchor.x + (rnd() - 0.5) * 2 * B.x, anchor.y + (rnd() - 0.5) * 2 * B.y, anchor.z + (rnd() - 0.5) * 2 * B.z)
     }
-    const f = flight.forward(_v2)
+    // new bubbles turn up ahead of where the plane is going, not where it's pointing
+    const f = flight.speed > 1 ? _v2.copy(flight.vel).normalize() : flight.forward(_v2)
     for (let i = 0; i < this.bub.length; i++) {
       const b = this.bub[i]
       b.p.y += dt * 0.8
@@ -345,16 +347,17 @@ export class Life {
       this.bubbles.setMatrixAt(i, _m)
     }
     this.bubbles.instanceMatrix.needsUpdate = true
-    this.bubbles.material.opacity = 1
+    // much past the speed of sound they'd only be a flicker
+    this.bubbles.visible = flight.speed < 1200
 
     // sparkles drift and wrap around the camera
     const sp = this.sparks.geometry.attributes.position.array
     const S = this.sparkBox, c = camera.position
     for (let i = 0; i < sp.length; i += 3) {
       sp[i + 1] += dt * 1.5
-      if (sp[i] - c.x > S.x) sp[i] -= 2 * S.x; else if (sp[i] - c.x < -S.x) sp[i] += 2 * S.x
-      if (sp[i + 2] - c.z > S.z) sp[i + 2] -= 2 * S.z; else if (sp[i + 2] - c.z < -S.z) sp[i + 2] += 2 * S.z
-      if (sp[i + 1] - c.y > S.y) sp[i + 1] -= 2 * S.y; else if (sp[i + 1] - c.y < -S.y) sp[i + 1] += 2 * S.y
+      sp[i] = c.x + wrapR(sp[i] - c.x, S.x)
+      sp[i + 1] = c.y + wrapR(sp[i + 1] - c.y, S.y)
+      sp[i + 2] = c.z + wrapR(sp[i + 2] - c.z, S.z)
     }
     this.sparks.geometry.attributes.position.needsUpdate = true
   }

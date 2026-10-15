@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import { GLSL_NOISE, GLSL_SRGB, GLSL_COVER, mulberry32, cloudCover, fbm } from './noise.js'
-import { SUN_DIR, CLOUD_Y } from './constants.js'
+import { GLSL_NOISE, GLSL_SRGB, GLSL_COVER, mulberry32, cloudCover, fbm, fbm3 } from './noise.js'
+import { SUN_DIR, CLOUD_Y, wrapR } from './constants.js'
 
 // ---------------------------------------------------------------- cloud sea
 const seaVert = /* glsl */ `
@@ -401,8 +401,19 @@ export class Clouds {
 
   shift(dx, dz) {
     this.origin.x += dx; this.origin.z += dz
+    if (Math.abs(this.origin.x) > 1e6 || Math.abs(this.origin.z) > 1e6) { this.origin.x %= 50000; this.origin.z %= 50000 }
     this.seaUniforms.uWorldOffset.value.set(this.origin.x, this.origin.z)
     for (const p of this.puffs) { p.x -= dx; p.z -= dz }
+  }
+
+  // the top of the deck under (x, z), or -Infinity over a break; follows the sea's vertex shader
+  deckTop(x, z) {
+    const wx = x + this.origin.x, wz = z + this.origin.z
+    const cv = cloudCover(wx, wz)
+    if (cv < 0.03) return -Infinity
+    const edge = THREE.MathUtils.smoothstep(cv, -0.1, 0.2)
+    const h = fbm3(wx * 0.0011 + this.time * 0.003, wz * 0.0011 + this.time * 0.003)
+    return CLOUD_Y + h * 30 * edge - (1 - edge) * 25 + 3
   }
 
   // fog boost when the camera is inside a puff; returns 0..1
@@ -434,11 +445,8 @@ export class Clouds {
     const R = this.wrapR
     for (const c of this.clusters) {
       const p0 = this.puffs[c.members[0]]
-      let mx = 0, mz = 0
-      if (p0.x - anchor.x > R) mx = -2 * R
-      else if (p0.x - anchor.x < -R) mx = 2 * R
-      if (p0.z - anchor.z > R) mz = -2 * R
-      else if (p0.z - anchor.z < -R) mz = 2 * R
+      const mx = anchor.x + wrapR(p0.x - anchor.x, R) - p0.x
+      const mz = anchor.z + wrapR(p0.z - anchor.z, R) - p0.z
       if (mx || mz) {
         if (c.deck) {
           // deck clusters must land on cloud, not in a break: re-place relative to the cluster centre
